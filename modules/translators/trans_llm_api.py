@@ -1297,6 +1297,7 @@ class LLM_API_Translator(BaseTranslator):
                 rpm_val = QUOTA_TRACKER.profiles.get(attempt_model, {}).get("rpm", 10)
                 self.logger.info(f"⏳ [RPM Throttle] Đang chờ {throttle_delay:.2f}s theo giới hạn {rpm_val} RPM của model '{attempt_model}'...")
 
+            proxy_switched = False
             for retry in range(2):
                 try:
                     self._respect_delay()
@@ -1334,6 +1335,7 @@ class LLM_API_Translator(BaseTranslator):
                         self.endpoint = "https://generativelanguage.googleapis.com/v1beta/openai"
                         self._cached_client = None
                         self._initialize_client(self._get_api_key())
+                        proxy_switched = True
                         break
 
                     is_rate_limit = (
@@ -1349,6 +1351,9 @@ class LLM_API_Translator(BaseTranslator):
                         break
                     self.logger.warning(f"translate_single with '{attempt_model}' failed: {e}. Retrying/falling back...")
                     time.sleep(0.5 + random.uniform(0.1, 0.4))
+
+            if proxy_switched:
+                continue
 
         return clean_text
 
@@ -1471,6 +1476,7 @@ class LLM_API_Translator(BaseTranslator):
                     rpm_val = QUOTA_TRACKER.profiles.get(attempt_model, {}).get("rpm", 10)
                     self.logger.info(f"⏳ [RPM Throttling] Đang chờ {throttle_delay:.2f}s theo giới hạn {rpm_val} RPM của model '{attempt_model}'...")
 
+                proxy_switched = False
                 for retry in range(3):
                     try:
                         self._respect_delay()
@@ -1534,6 +1540,7 @@ class LLM_API_Translator(BaseTranslator):
                             self.endpoint = "https://generativelanguage.googleapis.com/v1beta/openai"
                             self._cached_client = None
                             self._initialize_client(self._get_api_key())
+                            proxy_switched = True
                             break
 
                         is_rate_limit = (
@@ -1553,6 +1560,9 @@ class LLM_API_Translator(BaseTranslator):
                         backoff = (1.5 ** retry) + random.uniform(0.1, 0.5)
                         self.logger.warning(f"Chapter sub-batch {b_idx} attempt with '{attempt_model}' failed: {e}. Backing off {backoff:.2f}s...")
                         time.sleep(backoff)
+
+                if proxy_switched:
+                    continue
 
             if not sub_success:
                 if QUOTA_TRACKER.are_all_quotas_exhausted():
