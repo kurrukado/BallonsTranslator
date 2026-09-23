@@ -846,6 +846,9 @@ class LLM_API_Translator(BaseTranslator):
         if last_error is not None:
             raise last_error
 
+        if completion is None:
+            return None
+
         t_elapsed = time.perf_counter() - t0
 
         if (
