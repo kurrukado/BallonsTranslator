@@ -72,3 +72,13 @@ scratch/
 api-key.txt
 */api-key.txt
 gemini-proxy/api-key.txt
+
+# Markdown exclusions (preserve only READMEs)
+*.md
+**/*.md
+!README.md
+!README_EN.md
+!doc/README_*.md
+AGENTS.md
+project.md
+docs/
