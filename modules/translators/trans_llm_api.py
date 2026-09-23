@@ -1284,6 +1284,10 @@ class LLM_API_Translator(BaseTranslator):
             f"Output ONLY the translated text string. No quotes, explanations, JSON, or markdown."
         )
 
+        user_custom_prompt = self.system_prompt.strip() if hasattr(self, "system_prompt") and self.system_prompt else ""
+        if user_custom_prompt:
+            system_instruction += f"\n\nUSER CUSTOM INSTRUCTIONS & CHARACTER PROFILES (HIGHEST PRIORITY):\n{user_custom_prompt}\n"
+
         user_content = clean_text
         if context_hints:
             prev_txt = str(context_hints.get("previous", "")).strip()
@@ -1414,10 +1418,11 @@ class LLM_API_Translator(BaseTranslator):
             "4. False-Merge Prevention:\n"
             "   - Separate standalone utterances (e.g. 'Good morning.' and 'What are you doing?') must remain distinct and translated individually.\n"
             "5. Contextual Pronouns & Tone Consistency:\n"
-            "   - Friends/Peers: cậu/tớ/mình (default), bạn/tôi.\n"
-            "   - Couples/Romance: anh/em.\n"
+            "   - Infer relationship from conversational dynamics: Couples/Romance/Husband-Wife MUST use 'anh - em' (never 'tớ - cậu' or 'tôi - cô').\n"
+            "   - Close friends/peers of same age: cậu/tớ/mình (default), bạn/tôi.\n"
             "   - Inner thoughts (THOUGHT): tự vấn tự nhiên ('mình...').\n"
             "   - Combat/Enemies: mày/tao, ngươi/ta.\n"
+            "   - When Character Profiles or User Instructions are provided, they strictly OVERRIDE all defaults.\n"
             "6. Manga Punctuation Style (Dấu câu khung thoại manga):\n"
             "   - TUYỆT ĐỐI KHÔNG thêm dấu chấm đơn ('.') ở cuối câu thoại/bong bóng trừ phi là dấu ba chấm ('...', '…') hoặc từ viết tắt.\n"
             "7. OCR Noise & Typo Auto-Healing (Tự động phát hiện & sửa lỗi OCR):\n"
@@ -1428,6 +1433,13 @@ class LLM_API_Translator(BaseTranslator):
             "   - Output strictly valid JSON matching this schema:\n"
             f'{{"pages": [{{"page_index": 0, "dialogues": [{{"id": 1, "translation": "Bản dịch tiếng Việt"}}]}}]}}'
         )
+
+        user_custom_prompt = self.system_prompt.strip() if hasattr(self, "system_prompt") and self.system_prompt else ""
+        if user_custom_prompt:
+            system_instruction += (
+                f"\n\n9. USER CUSTOM INSTRUCTIONS & CHARACTER PROFILES (HIGHEST PRIORITY - STRICT ENFORCEMENT):\n"
+                f"{user_custom_prompt}\n"
+            )
 
         merged_result_map: Dict[int, Dict[Union[int, str], Dict[str, str]]] = {}
 
