@@ -1294,15 +1294,14 @@ class LLM_API_Translator(BaseTranslator):
             if QUOTA_TRACKER.is_rpd_exhausted(attempt_model):
                 continue
 
-            # Proactive RPM Throttling (inter-request spacing = 60/RPM)
-            throttle_delay = QUOTA_TRACKER.wait_for_rpm_slot(attempt_model)
-            if throttle_delay > 0.1:
-                rpm_val = QUOTA_TRACKER.profiles.get(attempt_model, {}).get("rpm", 10)
-                self.logger.info(f"⏳ [RPM Throttle] Đang chờ {throttle_delay:.2f}s theo giới hạn {rpm_val} RPM của model '{attempt_model}'...")
-
             proxy_switched = False
             for retry in range(2):
                 try:
+                    throttle_delay = QUOTA_TRACKER.wait_for_rpm_slot(attempt_model)
+                    if throttle_delay > 0.1:
+                        rpm_val = QUOTA_TRACKER.profiles.get(attempt_model, {}).get("rpm", 10)
+                        self.logger.info(f"⏳ [RPM Throttle] Đang chờ {throttle_delay:.2f}s theo giới hạn {rpm_val} RPM của model '{attempt_model}'...")
+
                     self._respect_delay()
                     effective_model = self._normalize_model(attempt_model)
                     completion = self.client.chat.completions.create(
@@ -1352,6 +1351,17 @@ class LLM_API_Translator(BaseTranslator):
                         QUOTA_TRACKER.record_429_exhaustion(attempt_model, reason=err_str)
                         self.logger.warning(f"translate_single: '{attempt_model}' chạm giới hạn rate limit/quota (429). Tự động chuyển sang model tiếp theo trong chain...")
                         break
+
+                    is_server_overload = (
+                        "503" in err_str
+                        or "high demand" in err_str.lower()
+                        or "overloaded" in err_str.lower()
+                        or "unavailable" in err_str.lower()
+                    )
+                    if is_server_overload:
+                        self.logger.warning(f"translate_single: '{attempt_model}' đang quá tải (503 / high demand). Chuyển sang model tiếp theo...")
+                        break
+
                     self.logger.warning(f"translate_single with '{attempt_model}' failed: {e}. Retrying/falling back...")
                     time.sleep(0.5 + random.uniform(0.1, 0.4))
 
@@ -1382,7 +1392,7 @@ class LLM_API_Translator(BaseTranslator):
         # Support both TranslationProxy and legacy TranslationStateBuffer
         is_proxy = hasattr(proxy_or_buffer, "build_sub_batch_payloads")
         if is_proxy:
-            sub_payloads = proxy_or_buffer.build_sub_batch_payloads(src_lang, tgt_lang, max_pages_per_batch=8, max_dialogues_per_batch=35)
+            sub_payloads = proxy_or_buffer.build_sub_batch_payloads(src_lang, tgt_lang, max_pages_per_batch=6, max_dialogues_per_batch=20)
             total_dialogues = proxy_or_buffer.total_dialogues_count()
         elif hasattr(proxy_or_buffer, "build_chapter_payload"):
             sub_payloads = [proxy_or_buffer.build_chapter_payload(src_lang, tgt_lang)]
@@ -1433,8 +1443,9 @@ class LLM_API_Translator(BaseTranslator):
         user_custom_prompt = self.system_prompt.strip() if hasattr(self, "system_prompt") and self.system_prompt else ""
         if user_custom_prompt:
             system_instruction += (
-                f"\n\n9. USER CUSTOM INSTRUCTIONS & CHARACTER PROFILES (HIGHEST PRIORITY - STRICT ENFORCEMENT):\n"
+                f"\n\n9. USER CUSTOM INSTRUCTIONS & CHARACTER PROFILES:\n"
                 f"{user_custom_prompt}\n"
+                f"\nIMPORTANT OVERRIDE: For Chapter Batch Translation, ALWAYS strictly format your output according to Rule 8 ('pages' array with 'page_index' and 'dialogues'), ignoring any conflicting output format instructions above."
             )
 
         merged_result_map: Dict[int, Dict[Union[int, str], Dict[str, str]]] = {}
@@ -1473,15 +1484,14 @@ class LLM_API_Translator(BaseTranslator):
                     self.logger.info(f"⏭️ [Quota Tracker] Bỏ qua model '{attempt_model}' (RPD hôm nay đã cạn).")
                     continue
 
-                # Proactive RPM Throttling (inter-request interval = 60/RPM)
-                throttle_delay = QUOTA_TRACKER.wait_for_rpm_slot(attempt_model)
-                if throttle_delay > 0.1:
-                    rpm_val = QUOTA_TRACKER.profiles.get(attempt_model, {}).get("rpm", 10)
-                    self.logger.info(f"⏳ [RPM Throttling] Đang chờ {throttle_delay:.2f}s theo giới hạn {rpm_val} RPM của model '{attempt_model}'...")
-
                 proxy_switched = False
                 for retry in range(3):
                     try:
+                        throttle_delay = QUOTA_TRACKER.wait_for_rpm_slot(attempt_model)
+                        if throttle_delay > 0.1:
+                            rpm_val = QUOTA_TRACKER.profiles.get(attempt_model, {}).get("rpm", 10)
+                            self.logger.info(f"⏳ [RPM Throttling] Đang chờ {throttle_delay:.2f}s theo giới hạn {rpm_val} RPM của model '{attempt_model}'...")
+
                         self._respect_delay()
                         effective_model = self._normalize_model(attempt_model)
                         tier_name = QUOTA_TRACKER.profiles.get(attempt_model, {}).get("tier", "standard").upper()
@@ -1560,6 +1570,20 @@ class LLM_API_Translator(BaseTranslator):
                                 f"Tự động chuyển tiếp ngay sang model dự phòng tiếp theo trong chain..."
                             )
                             break
+
+                        is_server_overload = (
+                            "503" in err_str
+                            or "high demand" in err_str.lower()
+                            or "overloaded" in err_str.lower()
+                            or "unavailable" in err_str.lower()
+                        )
+                        if is_server_overload:
+                            self.logger.warning(
+                                f"⚠️ [Server Overloaded 503] Model '{attempt_model}' đang quá tải (high demand / 503). "
+                                f"Tự động chuyển tiếp ngay sang model dự phòng tiếp theo trong chain..."
+                            )
+                            break
+
                         backoff = (1.5 ** retry) + random.uniform(0.1, 0.5)
                         self.logger.warning(f"Chapter sub-batch {b_idx} attempt with '{attempt_model}' failed: {e}. Backing off {backoff:.2f}s...")
                         time.sleep(backoff)

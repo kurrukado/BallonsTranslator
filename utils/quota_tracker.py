@@ -242,12 +242,14 @@ class QuotaTracker:
             return 0.0
 
     def wait_for_rpm_slot(self, model: str) -> float:
-        """Proactively sleeps if needed to respect the model's RPM constraint."""
+        """Proactively sleeps if needed to respect the model's RPM constraint and reserves the slot."""
         throttle_sec = self.get_required_rpm_throttle(model)
         if throttle_sec > 0.05:
             time.sleep(throttle_sec)
-            return throttle_sec
-        return 0.0
+        with self._mutex:
+            norm = self._normalize_model_name(model)
+            self.last_request_time[norm] = time.time()
+        return throttle_sec
 
     def record_call(self, model: str, tokens: int = 0):
         """Record an API request to the model, updating usage count and timestamps."""

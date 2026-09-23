@@ -253,6 +253,21 @@ def clean_and_repair_json(raw_text: str) -> Dict[str, Any]:
     if found_any:
         return {"pages": pages_list}
 
+    # Repair 4: Regex fallback for flat translations / dialogues if pages structure wasn't found
+    flat_items = []
+    for block_str in re.findall(r'\{[^{}]*\}', cleaned):
+        id_m = re.search(r'"id"\s*:\s*([^,\s}]+)', block_str)
+        trans_m = re.search(r'"translation"\s*:\s*"(.*?)"', block_str, re.DOTALL)
+        if id_m and trans_m:
+            d_id_raw = id_m.group(1).strip('"\'} ')
+            d_id = int(d_id_raw) if d_id_raw.isdigit() else d_id_raw
+            d_trans = trans_m.group(1)
+            emo_m = re.search(r'"emotion_tag"\s*:\s*"(.*?)"', block_str)
+            d_emotion = emo_m.group(1) if emo_m else "normal"
+            flat_items.append({"id": d_id, "translation": d_trans, "emotion_tag": d_emotion})
+    if flat_items:
+        return {"translations": flat_items}
+
     # Final attempt: re-raise original JSON error
     return json.loads(cleaned)
 
@@ -447,6 +462,61 @@ class TranslationProxy:
         """
         try:
             parsed_data = clean_and_repair_json(response_json) if isinstance(response_json, str) else response_json
+            if isinstance(parsed_data, list):
+                parsed_data = {"dialogues": parsed_data}
+
+            if isinstance(parsed_data, dict):
+                # Auto-adapt flat response (e.g. {"translations": [...]} or {"dialogues": [...]})
+                if not parsed_data.get("pages"):
+                    flat_items = parsed_data.get("translations") or parsed_data.get("dialogues")
+                    if isinstance(flat_items, list):
+                        total_blocks = sum(len(pb.blocks) for pb in payload.pages)
+                        reconstructed_pages = []
+                        if len(flat_items) == total_blocks:
+                            idx = 0
+                            for pb in payload.pages:
+                                count = len(pb.blocks)
+                                slice_items = []
+                                for i, b in enumerate(pb.blocks):
+                                    raw_item = flat_items[idx + i]
+                                    d = dict(raw_item) if isinstance(raw_item, dict) else {"translation": str(raw_item)}
+                                    d["id"] = b.id
+                                    slice_items.append(d)
+                                reconstructed_pages.append({
+                                    "page_index": pb.page_index,
+                                    "page_id": pb.page_id,
+                                    "dialogues": slice_items
+                                })
+                                idx += count
+                            parsed_data["pages"] = reconstructed_pages
+                        else:
+                            id_to_item = {str(d.get("id", "")): d for d in flat_items if isinstance(d, dict)}
+                            for pb in payload.pages:
+                                page_dialogues = [id_to_item[str(b.id)] for b in pb.blocks if str(b.id) in id_to_item]
+                                reconstructed_pages.append({
+                                    "page_index": pb.page_index,
+                                    "page_id": pb.page_id,
+                                    "dialogues": page_dialogues
+                                })
+                            parsed_data["pages"] = reconstructed_pages
+
+                # Normalize 1-based page index or page_id matching
+                if parsed_data.get("pages") and isinstance(parsed_data["pages"], list):
+                    payload_indices = {pb.page_index for pb in payload.pages}
+                    resp_indices = {p.get("page_index") for p in parsed_data["pages"] if isinstance(p, dict)}
+                    if 0 in payload_indices and 0 not in resp_indices and 1 in resp_indices:
+                        for p in parsed_data["pages"]:
+                            if isinstance(p, dict) and "page_index" in p and (p["page_index"] - 1) in payload_indices:
+                                p["page_index"] -= 1
+                    for p in parsed_data["pages"]:
+                        if isinstance(p, dict):
+                            p_id = p.get("page_id")
+                            if p_id and (p.get("page_index") not in payload_indices):
+                                for pb in payload.pages:
+                                    if pb.page_id == p_id:
+                                        p["page_index"] = pb.page_index
+                                        break
+
             resp_obj = ChapterTranslationResponse(**parsed_data)
         except Exception as e:
             return False, None, f"JSON/Pydantic Parsing Error: {e}"

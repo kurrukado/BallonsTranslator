@@ -64,6 +64,10 @@ Ultralytics/settings.json
 
 # Agent, cache and runtime state
 .agents/
+.agent/
+agent/
+.claude/
+claude/
 .ponytail/
 ponytail/
 cache/

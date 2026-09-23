@@ -362,6 +362,7 @@ class MainWindow(mainwindow_cls):
             self.configPanel.detect_config_panel.setDetector(name)
             self.bottomBar.textdet_selector.setSelectedValue(name)
             LOGGER.info('Text detector set to {}'.format(name))
+            self.save_config()
 
     def on_finish_setocr(self):
         module_manager = self.module_manager
@@ -371,6 +372,7 @@ class MainWindow(mainwindow_cls):
             self.configPanel.ocr_config_panel.setOCR(name)
             self.bottomBar.ocr_selector.setSelectedValue(name)
             LOGGER.info('OCR set to {}'.format(name))
+            self.save_config()
 
     def on_finish_setinpainter(self):
         module_manager = self.module_manager
@@ -380,6 +382,7 @@ class MainWindow(mainwindow_cls):
             self.configPanel.inpaint_config_panel.setInpainter(name)
             self.bottomBar.inpaint_selector.setSelectedValue(name)
             LOGGER.info('Inpainter set to {}'.format(name))
+            self.save_config()
 
     def on_finish_settranslator(self):
         module_manager = self.module_manager
@@ -390,6 +393,7 @@ class MainWindow(mainwindow_cls):
             self.bottomBar.trans_selector.finishSetTranslator(translator)
             self.configPanel.trans_config_panel.finishSetTranslator(translator)
             LOGGER.info('Translator set to {}'.format(name))
+            self.save_config()
         else:
             LOGGER.error('invalid translator')
         
@@ -407,21 +411,33 @@ class MainWindow(mainwindow_cls):
             pcfg.module.enable_inpaint = checked
             self.bottomBar.inpaint_selector.setVisible(checked)
         pcfg.module.update_finish_code()
+        self.save_config()
 
     def setupConfig(self):
-        if pcfg.module.translate_target in ["简体中文", "Simplified Chinese", ""]:
+        if not pcfg.module.translate_target or pcfg.module.translate_target in ["简体中文", "Simplified Chinese"]:
             pcfg.module.translate_target = "Tiếng Việt"
-        if pcfg.module.translate_source in ["简体中文", "Simplified Chinese", "Japanese", "日本語", ""]:
+        if not pcfg.module.translate_source or pcfg.module.translate_source in ["简体中文", "Simplified Chinese"]:
             pcfg.module.translate_source = "English"
-        if pcfg.module.ocr in ["manga_ocr", "mit48px_ctc", "windows_ocr", ""]:
+        if not pcfg.module.ocr or pcfg.module.ocr in ["mit48px_ctc"]:
             pcfg.module.ocr = "paddle_ocr"
 
         self.bottomBar.originalSlider.setValue(int(pcfg.original_transparency * 100))
         self.bottomBar.trans_selector.selector.addItems(GET_VALID_TRANSLATORS())
         self.bottomBar.ocr_selector.selector.addItems(GET_VALID_OCR())
         self.bottomBar.textdet_selector.selector.addItems(GET_VALID_TEXTDETECTORS())
-        self.bottomBar.textdet_selector.selector.currentTextChanged.connect(self.on_textdet_changed)
         self.bottomBar.inpaint_selector.selector.addItems(GET_VALID_INPAINTERS())
+
+        # Pre-select saved values from pcfg before connecting signals
+        if pcfg.module.textdetector in GET_VALID_TEXTDETECTORS():
+            self.bottomBar.textdet_selector.setSelectedValue(pcfg.module.textdetector)
+        if pcfg.module.ocr in GET_VALID_OCR():
+            self.bottomBar.ocr_selector.setSelectedValue(pcfg.module.ocr)
+        if pcfg.module.inpainter in GET_VALID_INPAINTERS():
+            self.bottomBar.inpaint_selector.setSelectedValue(pcfg.module.inpainter)
+        if pcfg.module.translator in GET_VALID_TRANSLATORS():
+            self.bottomBar.trans_selector.selector.setCurrentText(pcfg.module.translator)
+
+        self.bottomBar.textdet_selector.selector.currentTextChanged.connect(self.on_textdet_changed)
         self.bottomBar.inpaint_selector.selector.currentTextChanged.connect(self.on_inpaint_changed)
         self.bottomBar.trans_selector.cfg_clicked.connect(self.to_trans_config)
         self.bottomBar.trans_selector.selector.currentTextChanged.connect(self.on_trans_changed)
@@ -1367,25 +1383,41 @@ class MainWindow(mainwindow_cls):
 
     def on_textdet_changed(self):
         module = self.bottomBar.textdet_selector.selector.currentText()
+        if not module:
+            return
+        pcfg.module.textdetector = module
+        self.save_config()
         tgt_selector = self.configPanel.detect_config_panel.module_combobox
         if tgt_selector.currentText() != module and module in GET_VALID_TEXTDETECTORS():
             tgt_selector.setCurrentText(module)
 
     def on_ocr_changed(self):
         module = self.bottomBar.ocr_selector.selector.currentText()
+        if not module:
+            return
+        pcfg.module.ocr = module
+        self.save_config()
         tgt_selector = self.configPanel.ocr_config_panel.module_combobox
         if tgt_selector.currentText() != module and module in GET_VALID_OCR():
             tgt_selector.setCurrentText(module)
 
     def on_trans_changed(self):
         module = self.bottomBar.trans_selector.selector.currentText()
+        if not module:
+            return
+        pcfg.module.translator = module
+        self.save_config()
         tgt_selector = self.configPanel.trans_config_panel.module_combobox
         if tgt_selector.currentText() != module and module in GET_VALID_TRANSLATORS():
             tgt_selector.setCurrentText(module)
 
     def on_trans_src_changed(self):
         sender = self.sender()
+        if sender is None:
+            return
         text = sender.currentText()
+        if not text:
+            return
         translator = self.module_manager.translator
         if translator is not None:
             translator.set_source(text)
@@ -1400,10 +1432,15 @@ class MainWindow(mainwindow_cls):
             combobox.blockSignals(True)
             combobox.setCurrentText(text)
             combobox.blockSignals(False)
+        self.save_config()
 
     def on_trans_tgt_changed(self):
         sender = self.sender()
+        if sender is None:
+            return
         text = sender.currentText()
+        if not text:
+            return
         translator = self.module_manager.translator
         if translator is not None:
             translator.set_target(text)
@@ -1418,9 +1455,14 @@ class MainWindow(mainwindow_cls):
             combobox.blockSignals(True)
             combobox.setCurrentText(text)
             combobox.blockSignals(False)
+        self.save_config()
 
     def on_inpaint_changed(self):
         module = self.bottomBar.inpaint_selector.selector.currentText()
+        if not module:
+            return
+        pcfg.module.inpainter = module
+        self.save_config()
         tgt_selector = self.configPanel.inpaint_config_panel.module_combobox
         if tgt_selector.currentText() != module and module in GET_VALID_INPAINTERS():
             tgt_selector.setCurrentText(module)
