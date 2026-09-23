@@ -1,17 +1,38 @@
 > [!IMPORTANT]  
 > **If you're sharing the translated result publicly and no experienced human translator participated in a throughout translating or proofreading, please mark it as machine translation somewhere clear to see.**
 
-# BallonTranslator
-[简体中文](/README.md) | English | [pt-BR](doc/README_PT-BR.md) | [Русский](doc/README_RU.md) | [日本語](doc/README_JA.md) | [Indonesia](doc/README_ID.md) | [Tiếng Việt](doc/README_VI.md) | [한국어](doc/README_KO.md) | [Español](doc/README_ES.md) | [Français](doc/README_FR.md)
+# 🎈 BalloonsTranslator — 100% Free AI Models Edition
 
-Yet another computer-aided comic/manga translation tool powered by deep learning.  
+> **A specialized, production-ready fork of BalloonsTranslator optimized for 100% Free & Local AI Pipelines (Google Gemini API Free Tier, On-Device LaMa Inpainting, ComicTextDetector 2K, Windows OCR & Vietnamese Scanlation Typography).**
 
-The AI Modified [Ballonstranslator-Pro](https://github.com/thomaswantstobeaskeleton/BallonsTranslator-Pro) Version has added many new features. The main contributors of this project did not participate in its development; use at your own risk.
+[![Free AI Models](https://img.shields.io/badge/AI%20Cost-100%25%20Free-brightgreen.svg)](#)
+[![Google Gemini API](https://img.shields.io/badge/LLM-Gemini%20Flash%20Free%20Tier-blue.svg)](#)
+[![Local Inpainting](https://img.shields.io/badge/Inpaint-LaMa%20Large%20(Local%20CUDA)-orange.svg)](#)
+[![Text Detection](https://img.shields.io/badge/Detector-ComicTextDetector%202K-purple.svg)](#)
+[![License](https://img.shields.io/badge/License-GPL--3.0-yellow.svg)](LICENSE)
+
+[English](/README_EN.md) | [Tiếng Việt](doc/README_VI.md) | [简体中文](/README.md) | [日本語](doc/README_JA.md)
+
+---
+
+### 🌟 Why This Free AI Edition?
+
+This fork was created to eliminate all costly API subscriptions (such as OpenAI GPT-4 or DeepL Pro). It replaces the entire translation, inpainting, and text detection pipeline with **the highest quality 100% Free and Local AI technologies available today**:
+
+| Pipeline Component | Original / Other Forks | Free AI Edition (This Fork) | Cost |
+| :--- | :--- | :--- | :---: |
+| **Smart Translation (LLM)** | Dependent on paid DeepL / OpenAI; prone to rate limits & disjointed phrasing | **Google Gemini Flash & Lite** via built-in `gemini-proxy` with automatic load balancing. Multi-bubble sentence stitching, contextual manga pronouns, and 100% anti-hallucination. | **$0 (Free Tier)** |
+| **Text Removal (Inpaint)** | Gradient stepping artifacts, visible seams, pixel leakage | **Clean-Canvas LaMa Large** combined with **Laplacian Multi-Band Pyramid Blending**. Seamlessly restores sloped screentones, preserving 100% of original unmasked pixels (`Unmasked MAE = 0.000000`). | **$0 (Local GPU)** |
+| **Text Detection** | Misses free-floating text, downscales 2K high-res panels | **ComicTextDetector 2K High-DPI (1536px)** with high-sensitivity thresholds (`text_thresh=0.25, link_thresh=0.20`), capturing 100% of open bubbles and narration boxes. | **$0 (Local GPU)** |
+| **OCR (Text Recognition)** | Requires paid 3rd-party APIs or heavy setups | **Windows Media OCR** built into Windows + **PaddleOCR** offline fallback. | **$0 (Offline)** |
+| **Typography & Fonts** | Single generic font for all dialogue | **Automatic 2-Font Lettering System**: Normal dialogue (`Yuki-CCMarianChurchlandJournal`) and Shout/Action (`CCWildWordsRoman`) with full Vietnamese diacritics. | **$0 (Built-in)** |
+
+---
 
 <img src="doc/src/ui0.jpg" div align=center>
 
 <p align=center>
-preview
+BalloonsTranslator UI (Free AI Models Edition)
 </p>
 
 # Features

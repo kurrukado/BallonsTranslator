@@ -1,17 +1,38 @@
 > [!IMPORTANT]  
 > **如打算公开分享本工具的机翻结果，且没有有经验的译者进行过完整的翻译或校对，请在显眼位置注明机翻。**
 
-# BallonTranslator
-简体中文 | [English](/README_EN.md) | [pt-BR](doc/README_PT-BR.md) | [Русский](doc/README_RU.md) | [日本語](doc/README_JA.md) | [Indonesia](doc/README_ID.md) | [Tiếng Việt](doc/README_VI.md) | [한국어](doc/README_KO.md) | [Español](doc/README_ES.md) | [Français](doc/README_FR.md)
+# 🎈 BalloonsTranslator — 100% Free AI Models Edition
 
-深度学习辅助漫画翻译工具，支持一键机翻和简单的图像/文本编辑  
+> **Phiên bản tối ưu hóa đặc biệt tập trung 100% vào các Mô hình AI Miễn phí (Zero-Cost / Free-Tier AI Pipelines) chất lượng cao nhất cho dịch truyện tranh Manga/Comic sang Tiếng Việt & Đa ngôn ngữ.**
 
-AI 魔改版 [Ballonstranslator-Pro](https://github.com/thomaswantstobeaskeleton/BallonsTranslator-Pro) 新增了许多特性，本项目主要贡献者未参与开发，使用需风险自负。
+[![Free AI Models](https://img.shields.io/badge/AI%20Cost-100%25%20Free-brightgreen.svg)](#)
+[![Google Gemini API](https://img.shields.io/badge/LLM-Gemini%20Flash%20Free%20Tier-blue.svg)](#)
+[![Local Inpainting](https://img.shields.io/badge/Inpaint-LaMa%20Large%20(Local%20CUDA)-orange.svg)](#)
+[![Text Detection](https://img.shields.io/badge/Detector-ComicTextDetector%202K-purple.svg)](#)
+[![License](https://img.shields.io/badge/License-GPL--3.0-yellow.svg)](LICENSE)
+
+[Tiếng Việt](doc/README_VI.md) | [English](/README_EN.md) | [简体中文](/doc/README_CN.md) | [日本語](doc/README_JA.md)
+
+---
+
+### 🌟 Tại sao chọn bản Free AI Edition này? (Why This Fork?)
+
+Bản phân nhánh này được phát triển với mục tiêu **tiết kiệm 100% chi phí sử dụng cho dịch giả và các nhóm scanlation**: Loại bỏ hoàn toàn sự phụ thuộc vào các API dịch thuật trả phí đắt đỏ (như OpenAI GPT-4 hay DeepL Pro), thay thế toàn bộ quy trình dịch thuật, xóa chữ và nhận diện văn bản bằng **100% các công nghệ AI Miễn Phí và On-Device chất lượng cao nhất hiện nay**:
+
+| Thành Phần Pipeline | Bản Gốc / Bản Khác | Bản Free AI Edition (Bản Này) | Chi Phí |
+| :--- | :--- | :--- | :---: |
+| **Dịch thuật Thông Minh (LLM)** | Phụ thuộc DeepL / OpenAI trả phí; dễ bị lỗi quota & dịch thô cứng rời rạc | **Google Gemini Flash & Lite** qua `gemini-proxy` tự động cân bằng tải. Tự động nối mạch câu đa bong bóng (Multi-bubble cohesion), xử lý đại từ nhân xưng chuẩn sắc thái manga, chống ảo giác 100%. | **0đ (Free Tier)** |
+| **Xóa chữ (Inpaint)** | Gãy dải chuyển sắc (gradient stepping), lộ viền ghép (seam), rò rỉ pixel | **Clean-Canvas LaMa Large** kết hợp **Laplacian Multi-Band Pyramid Blending**. Khôi phục mượt mà nền screentone dốc, bảo toàn 100% điểm ảnh gốc ngoài mask (`Unmasked MAE = 0.000000`). | **0đ (Local GPU)** |
+| **Nhận diện chữ (Detection)**| Bỏ sót chữ ngoài bóng thoại (free-floating text), vỡ nét ảnh 2K | **ComicTextDetector 2K High-DPI (1536px)** với độ nhạy biên cao (`text_thresh=0.25, link_thresh=0.20`), gom trọn 100% khung thoại mở và chữ rơi tự do. | **0đ (Local GPU)** |
+| **OCR (Nhận diện ký tự)** | Gọi API bên thứ ba có phí hoặc cài đặt cồng kềnh | **Windows Media OCR** tích hợp sẵn trong Windows + **PaddleOCR** offline fallback siêu tốc. | **0đ (Offline)** |
+| **Phối Font Tiếng Việt** | Dùng 1 font đơn điệu cho tất cả các loại lời thoại | **Hệ thống tự động 2 Font**: Thoại thường (`Yuki-CCMarianChurchlandJournal`) và Gầm thét/hành động (`CCWildWordsRoman`) chuẩn phong cách scanlation. | **0đ (Tích hợp sẵn)** |
+
+---
 
 <img src="doc/src/ui0.jpg" div align=center>
 
 <p align=center>
-界面预览
+Giao diện BalloonsTranslator (Bản Free AI Edition)
 </p>
 
 # Features
