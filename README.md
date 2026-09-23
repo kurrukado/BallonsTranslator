@@ -1,12 +1,12 @@
 > [!IMPORTANT]  
 > **Nếu bạn chia sẻ công khai kết quả dịch máy từ công cụ này mà chưa qua biên dịch hoặc hiệu đính bởi dịch giả có kinh nghiệm, vui lòng ghi rõ nguồn là bản dịch máy (machine translation).**
 
-# 🎈 BalloonsTranslator — 100% Free AI Models Edition
+# 🎈 BalloonsTranslator — Low-Cost & Local AI Edition
 
-> **Phiên bản tối ưu hóa đặc biệt tập trung 100% vào các Mô hình AI Miễn phí (Zero-Cost / Free-Tier AI Pipelines) chất lượng cao nhất cho dịch truyện tranh Manga/Comic sang Tiếng Việt & Đa ngôn ngữ.**
+> **Phiên bản BalloonsTranslator tối ưu hóa quy trình dịch thuật truyện tranh (Manga/Manhwa/Comic) bằng cách kết hợp các mô hình LLM chi phí thấp (Low-Cost Models) cùng các công nghệ AI chạy cục bộ (Local AI) hiệu năng cao.**
 
-[![Free AI Models](https://img.shields.io/badge/AI%20Cost-100%25%20Free-brightgreen.svg)](#)
-[![Google Gemini API](https://img.shields.io/badge/LLM-Gemini%20Flash%20Free%20Tier-blue.svg)](#)
+[![AI Architecture](https://img.shields.io/badge/Architecture-Low--Cost%20%26%20Local%20AI-brightgreen.svg)](#)
+[![LLM Engine](https://img.shields.io/badge/LLM-Gemini%20Flash%20Series-blue.svg)](#)
 [![Local Inpainting](https://img.shields.io/badge/Inpaint-LaMa%20Large%20(Local%20CUDA)-orange.svg)](#)
 [![Text Detection](https://img.shields.io/badge/Detector-ComicTextDetector%202K-purple.svg)](#)
 [![License](https://img.shields.io/badge/License-GPL--3.0-yellow.svg)](LICENSE)
@@ -15,37 +15,35 @@
 
 ---
 
-### 🌟 Tại sao chọn bản Free AI Edition này? (Why This Fork?)
+### 🌟 Giới thiệu Bản Phân Nhánh (About This Fork)
 
-Bản phân nhánh này được phát triển với mục tiêu **tiết kiệm 100% chi phí cho dịch giả và các nhóm scanlation**: Loại bỏ hoàn toàn sự phụ thuộc vào các API dịch thuật trả phí đắt đỏ (như OpenAI GPT-4 hay DeepL Pro), thay thế toàn bộ quy trình dịch thuật, xóa chữ và nhận diện văn bản bằng **100% các công nghệ AI Miễn Phí và On-Device chất lượng cao nhất hiện nay**:
+Bản phân nhánh này được phát triển nhằm tối ưu hóa chi phí vận hành và nâng cao chất lượng bản dịch cho dịch giả và các nhóm scanlation bằng cách kết hợp sức mạnh giữa mô hình ngôn ngữ lớn (LLM) chi phí thấp và các mô hình AI chuyên dụng chạy trực tiếp trên thiết bị (On-Device / Local AI):
 
-| Thành Phần Pipeline | Bản Gốc / Bản Khác | Bản Free AI Edition (Bản Này) | Chi Phí |
-| :--- | :--- | :--- | :---: |
-| **Dịch thuật Thông Minh (LLM)** | Phụ thuộc DeepL / OpenAI trả phí; dễ bị lỗi giới hạn quota & câu dịch rời rạc | **Google Gemini Flash & Lite** qua `gemini-proxy` tự động cân bằng tải đa khóa (multi-key). Tự động nối mạch câu đa bong bóng (Multi-bubble cohesion), xử lý đại từ xưng hô chuẩn sắc thái manga, chống ảo giác 100%. | **0đ (Free Tier)** |
-| **Xóa chữ (Inpaint)** | Gãy dải chuyển sắc (gradient stepping), lộ viền ghép (seam), rò rỉ pixel | **Clean-Canvas LaMa Large** kết hợp **Laplacian Multi-Band Pyramid Blending**. Khôi phục mượt mà nền screentone dốc, bảo toàn 100% điểm ảnh gốc ngoài mask (`Unmasked MAE = 0.000000`). | **0đ (Local GPU)** |
-| **Nhận diện chữ (Detection)**| Bỏ sót chữ ngoài bóng thoại (free-floating text), vỡ nét ảnh 2K | **ComicTextDetector 2K High-DPI (1536px)** với độ nhạy biên cao (`text_thresh=0.25, link_thresh=0.20`), gom trọn 100% khung thoại mở và chữ rơi tự do. | **0đ (Local GPU)** |
-| **OCR (Nhận diện ký tự)** | Gọi API bên thứ ba có phí hoặc cài đặt cồng kềnh | **Windows Media OCR** tích hợp sẵn trong Windows + **PaddleOCR** offline fallback siêu tốc. | **0đ (Offline)** |
-| **Phối Font Tiếng Việt** | Dùng 1 font đơn điệu cho tất cả các loại lời thoại | **Hệ thống tự động 2 Font**: Thoại thường (`Yuki-CCMarianChurchlandJournal`) và Gầm thét/hành động (`CCWildWordsRoman`) chuẩn phong cách scanlation. | **0đ (Tích hợp sẵn)** |
+- **Dịch thuật Ngữ cảnh Thông minh (Low-Cost LLM)**: Ứng dụng dòng mô hình **Google Gemini Flash & Flash-Lite** thông qua bộ điều phối `gemini-proxy` tự động cân bằng tải đa khóa (multi-key). Tích hợp cơ chế gộp chương (Chapter Batch Aggregation) hỗ trợ nối mạch câu đa bong bóng (multi-bubble cohesion), suy luận xưng hô scanlation tự nhiên theo vai vế nhân vật và khóa schema chống ảo giác.
+- **Khôi phục Nền & Xóa chữ Cục bộ (Local Neural Inpainting)**: Sử dụng **Clean-Canvas LaMa Large** kết hợp thuật toán **Laplacian Multi-Band Pyramid Blending** chạy trực tiếp trên GPU/CPU, tái tạo mượt mà nền screentone dốc và bảo toàn toàn vẹn điểm ảnh gốc ngoài vùng mask (`Unmasked MAE = 0.000000`).
+- **Nhận diện Vùng Chữ Tự Động (Local Text Detection)**: Sử dụng **ComicTextDetector 2K High-DPI (1536px)** với độ nhạy biên cao, bóc tách chính xác các khung thoại phức tạp và chữ rơi tự do ngoài bóng thoại.
+- **Nhận diện Ký tự Đa Tầng Cục bộ (Local Multi-Tier OCR)**: Tích hợp **Windows Media OCR** (sẵn trên Windows) kết hợp **PaddleOCR** chạy ngoại tuyến, trích xuất chính xác chữ thoại truyện tranh.
+- **Định dạng Phông chữ Bản quyền Scanlation**: Hệ thống tự động phân loại cảm xúc lời thoại để áp dụng bộ font chuyên dụng cho Manga/Comic tiếng Việt (`Yuki-CCMarianChurchlandJournal` cho thoại thường và `CCWildWordsRoman` cho gầm thét/hành động).
 
 ---
 
-### 🙏 Lời cảm ơn & Nguồn gốc Dự án (Credits & Upstream Attribution)
+### 🙏 Lời Cảm Ơn & Nguồn Gốc Dự Án (Credits & Upstream Attribution)
 
 Dự án này là bản phân nhánh (fork) cải tiến từ dự án mã nguồn mở tuyệt vời [**BallonsTranslator**](https://github.com/dmMaze/BallonsTranslator) được sáng lập và phát triển bởi tác giả [**@dmMaze**](https://github.com/dmMaze).
 
 - **Tác giả gốc / Upstream Repository**: [dmMaze/BallonsTranslator](https://github.com/dmMaze/BallonsTranslator)
 - **Giấy phép bản quyền (License)**: Dự án tuân thủ đầy đủ điều khoản của [GNU General Public License v3.0 (GPL-3.0)](LICENSE), giữ nguyên bản quyền và sự tôn trọng tuyệt đối với tác giả gốc.
-- **Mục tiêu của Bản Fork**: Bản phân nhánh bởi [@kurrukado](https://github.com/kurrukado/BallonsTranslator) tập trung chuyên biệt vào việc **tối ưu hóa 100% cho các mô hình AI miễn phí** (Google Gemini Free Tier, On-Device LaMa Inpaint, ComicTextDetector 2K, font scanlation Tiếng Việt) giúp dịch giả và các nhóm dịch manga/comic có được chất lượng cao nhất mà không tốn chi phí API hàng tháng.
+- **Mục tiêu của Bản Fork**: Bản phân nhánh bởi [@kurrukado](https://github.com/kurrukado/BallonsTranslator) tập trung chuyên biệt vào việc kết hợp các mô hình ngôn ngữ chi phí thấp (Low-Cost LLM) cùng các công nghệ AI chạy cục bộ (Local AI on GPU/CPU) để mang lại giải pháp dịch truyện tranh hiệu quả, chất lượng cao và tiết kiệm chi phí cho dịch giả.
 
 Mọi đóng góp cốt lõi về kiến trúc giao diện GUI, canvas rendering và các thuật toán nền tảng đều thuộc về tác giả [@dmMaze](https://github.com/dmMaze) cùng các contributor của dự án gốc. Xin chân thành cảm ơn tác giả!
 
 ---
 
 <p align="center">
-  <img src="doc/src/ui0.jpg" alt="Giao diện BalloonsTranslator Free AI Edition">
+  <img src="doc/src/ui0.jpg" alt="Giao diện BalloonsTranslator">
 </p>
 <p align="center">
-  <em>Giao diện BalloonsTranslator (Bản Free AI Edition)</em>
+  <em>Giao diện BalloonsTranslator (Low-Cost & Local AI Edition)</em>
 </p>
 
 ---
@@ -56,7 +54,7 @@ Mọi đóng góp cốt lõi về kiến trúc giao diện GUI, canvas rendering
   - Tự động nhận diện khung chữ, bóc tách văn bản, xóa chữ và điền văn bản dịch vào đúng vị trí.
   - Tự động ước lượng định dạng chữ gốc (màu sắc, viền, góc xoay, căn lề, kích thước) để dàn trang bản dịch tự nhiên nhất.
   - Tối ưu hóa đặc biệt cho Manga Nhật, Manhwa Hàn và Comic Âu Mỹ.
-  - Tích hợp sẵn `gemini-proxy` tự động xoay tua nhiều API key Gemini miễn phí, không bao giờ lo cạn quota hay tắc nghẽn.
+  - Tích hợp sẵn `gemini-proxy` tự động xoay tua nhiều API key Gemini, đảm bảo thông lượng dịch ổn định và tự động chuyển đổi mô hình (fallback chain).
 
 * **Chỉnh sửa hình ảnh & Xóa chữ thủ công (Image Editing)**  
   - Hỗ trợ cọ xóa chữ (Inpainting Healing Brush) và chỉnh sửa mặt nạ (mask editing) chuyên nghiệp như Photoshop.
@@ -88,8 +86,8 @@ Mọi đóng góp cốt lõi về kiến trúc giao diện GUI, canvas rendering
    cd BallonsTranslator
    ```
 
-3. **Cấu hình Gemini API Key Miễn Phí**:
-   - Truy cập [Google AI Studio](https://aistudio.google.com/) để lấy 1 hoặc nhiều API Key miễn phí.
+3. **Cấu hình Gemini API Key**:
+   - Truy cập [Google AI Studio](https://aistudio.google.com/) để lấy 1 hoặc nhiều API Key.
    - Mở file `gemini-proxy/api-key.txt` (hoặc copy từ `api-key.txt.example`) và dán các key vào, mỗi key trên một dòng:
      ```text
      AIzaSyYourFirstGeminiApiKey...

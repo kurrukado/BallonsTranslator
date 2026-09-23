@@ -1,12 +1,12 @@
 > [!IMPORTANT]  
 > **如打算公开分享本工具的机翻结果，且没有有经验的译者进行过完整的翻译或校对，请在显眼位置注明机翻。**
 
-# 🎈 BalloonsTranslator — 100% 免费 AI 模型版 (Free AI Models Edition)
+# 🎈 BalloonsTranslator — 低成本与本地 AI 优化版 (Low-Cost & Local AI Edition)
 
-> **专为 100% 免费与本地 AI 流程（Zero-Cost / Free-Tier AI Pipelines）深度优化的 BalloonsTranslator 分支版本。集成 Google Gemini API 免费层多密钥负载均衡、Clean-Canvas LaMa 本地修复、ComicTextDetector 2K 高清文本检测及 Vietnamese/多语言汉化排版预设。**
+> **结合低成本大语言模型（Low-Cost LLMs）与高性能本地 AI 技术的 BalloonsTranslator 分支版本。集成 Google Gemini Flash 系列多密钥负载均衡、Clean-Canvas LaMa 本地修复、ComicTextDetector 2K 高清文本检测及多语言/越南语汉化排版预设。**
 
-[![Free AI Models](https://img.shields.io/badge/AI%20Cost-100%25%20Free-brightgreen.svg)](#)
-[![Google Gemini API](https://img.shields.io/badge/LLM-Gemini%20Flash%20Free%20Tier-blue.svg)](#)
+[![AI Architecture](https://img.shields.io/badge/Architecture-Low--Cost%20%26%20Local%20AI-brightgreen.svg)](#)
+[![LLM Engine](https://img.shields.io/badge/LLM-Gemini%20Flash%20Series-blue.svg)](#)
 [![Local Inpainting](https://img.shields.io/badge/Inpaint-LaMa%20Large%20(Local%20CUDA)-orange.svg)](#)
 [![Text Detection](https://img.shields.io/badge/Detector-ComicTextDetector%202K-purple.svg)](#)
 [![License](https://img.shields.io/badge/License-GPL--3.0-yellow.svg)](../LICENSE)
@@ -15,17 +15,15 @@
 
 ---
 
-### 🌟 为什么选择本分支版本？ (Why This Fork?)
+### 🌟 分支架构特点 (About This Fork)
 
-本分支旨在**彻底免除翻译者与汉化组的高昂 API 订阅成本**（如 OpenAI GPT-4 或 DeepL Pro）。我们将整个翻译、去字和文本检测流程全面升级为**当前最高质量的 100% 免费和本地 AI 技术方案**：
+本分支致力于通过融合高性价比语言模型与本地端侧 AI 技术，为个人译者与汉化组提供兼顾高质量与低成本的完整漫画翻译工具链：
 
-| 流水线组件 | 原版 / 其它分支 | 本免费 AI 分支 (This Fork) | 成本 |
-| :--- | :--- | :--- | :---: |
-| **智能翻译 (LLM)** | 依赖收费的 DeepL / OpenAI；容易遭遇速率限制与句意割裂 | **Google Gemini Flash & Lite** 通过内置 `gemini-proxy` 自动进行多密钥轮换与负载均衡。支持多气泡连贯拼接（Multi-bubble cohesion），漫画语境称谓对齐，100% 防幻觉。 | **¥0 (免费额度)** |
-| **文字消除 (Inpaint)** | 渐变背景断层（gradient stepping）、明显拼接缝、像素渗色 | **Clean-Canvas LaMa Large** 结合 **拉普拉斯多频段金字塔融合 (Laplacian Multi-Band Pyramid Blending)**。平滑还原倾斜网点背景，非掩膜区域 100% 原图像素保真 (`Unmasked MAE = 0.000000`)。 | **¥0 (本地 GPU)** |
-| **文本检测 (Detection)**| 漏检无框浮动文字，2K 高清图片缩放失真 | **ComicTextDetector 2K High-DPI (1536px)** 采用高灵敏度边缘阈值 (`text_thresh=0.25, link_thresh=0.20`)，完整捕获开放式气泡与悬浮文字。 | **¥0 (本地 GPU)** |
-| **OCR (文字识别)** | 需配置繁琐第三方收费 API | **Windows Media OCR** (Windows 内置) + **PaddleOCR** 离线高速备选。 | **¥0 (离线)** |
-| **字体排版 (Typography)** | 全局单字体单调填充 | **自动双字体嵌字系统**：普通对话与动作吼叫自动区分，完美支持多语言与越南语变音符号。 | **¥0 (内置)** |
+- **语境智能翻译 (Low-Cost LLM)**：采用 **Google Gemini Flash & Flash-Lite** 模型，通过内置 `gemini-proxy` 自动执行多密钥轮换与请求分发。支持章节级聚合翻译（Chapter Batch Aggregation），实现多气泡语意平滑衔接、角色语境称谓对齐及严格防幻觉校验。
+- **本地端侧图像消除 (Local Neural Inpainting)**：基于 **Clean-Canvas LaMa Large** 与 **拉普拉斯多频段金字塔融合 (Laplacian Multi-Band Pyramid Blending)** 在本地 GPU/CPU 直接运算，平滑修复网点背景并保持非掩膜区域 100% 原始像素完整度 (`Unmasked MAE = 0.000000`)。
+- **高分辨率文本检测 (Local AI)**：采用 **ComicTextDetector 2K High-DPI (1536px)** 高灵敏度边缘算法，完整检出各类复杂对话框与无框浮动文字。
+- **多级本地离线 OCR (Local OCR)**：内置 **Windows Media OCR** 与 **PaddleOCR** 离线引擎，快速精准提取原文。
+- **专业级字体排版系统**：自动识别常规对话与动作音效/吼叫，自动套用适配漫画风格的专用字体样式。
 
 ---
 
@@ -35,17 +33,17 @@
 
 - **原作者 / 上游仓库**：[dmMaze/BallonsTranslator](https://github.com/dmMaze/BallonsTranslator)
 - **开源协议 (License)**：本项目严格遵循 [GNU General Public License v3.0 (GPL-3.0)](../LICENSE)，保留所有原始版权信息与声明。
-- **分支目标**：由 [@kurrukado](https://github.com/kurrukado/BallonsTranslator) 维护，专注于 **100% 免费与本地 AI 流程**（Google Gemini 免费额度多密钥负载均衡、Clean-Canvas LaMa 去字、ComicTextDetector 2K 检测及多语言排版），让任何人都能以零 API 成本享受高质量漫画机翻嵌字体验。
+- **分支目标**：由 [@kurrukado](https://github.com/kurrukado/BallonsTranslator) 维护，专注于低成本大模型（Low-Cost LLM）与本地端侧 AI 算力的高效整合，为漫画翻译本地化提供经济、高效且高质量的生产力工具。
 
 原项目的所有基础 GUI 架构、画布渲染系统及核心算法均归原作者 [@dmMaze](https://github.com/dmMaze) 及上游贡献者所有。在此致以最诚挚的感谢！
 
 ---
 
 <p align="center">
-  <img src="src/ui0.jpg" alt="BalloonsTranslator 免费 AI 版界面">
+  <img src="src/ui0.jpg" alt="BalloonsTranslator 界面">
 </p>
 <p align="center">
-  <em>BalloonsTranslator 界面 (100% 免费 AI 模型版)</em>
+  <em>BalloonsTranslator 界面 (Low-Cost & Local AI Edition)</em>
 </p>
 
 ---
@@ -56,7 +54,7 @@
   - 自动完成文本检测、识别、去字、翻译并根据原文排版回填。
   - 译文回填参考对原文排版的估计，包括颜色、轮廓、角度、朝向、对齐方式与字号。
   - 完美支持日漫、韩漫与美漫。
-  - 内置 `gemini-proxy`，自动负载均衡多个免费 Gemini API Key，彻底告别额度耗尽。
+  - 内置 `gemini-proxy`，自动负载均衡多个 Gemini API Key，保障翻译吞吐与顺畅的模型回退机制。
 
 * **图像编辑与去字画笔**  
   - 支持掩膜编辑和修复画笔（类似 Photoshop 污点修复画笔）。
@@ -87,8 +85,8 @@
    cd BallonsTranslator
    ```
 
-3. **配置免费 Gemini API 密钥**:
-   - 在 [Google AI Studio](https://aistudio.google.com/) 免费获取一个或多个 API Key。
+3. **配置 Gemini API 密钥**:
+   - 在 [Google AI Studio](https://aistudio.google.com/) 获取一个或多个 API Key。
    - 打开 `gemini-proxy/api-key.txt`（或从 `api-key.txt.example` 复制），每行填入一个 Key：
      ```text
      AIzaSyYourFirstGeminiApiKey...

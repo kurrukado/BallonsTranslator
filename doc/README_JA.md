@@ -1,12 +1,12 @@
 > [!IMPORTANT]  
 > **本ツールの機械翻訳結果を公開する場合、経験豊富な翻訳者による校正がない場合は、機械翻訳であることを明記してください。**
 
-# 🎈 BalloonsTranslator — 100% 無料 AI モデル版 (Free AI Models Edition)
+# 🎈 BalloonsTranslator — 低コスト＆ローカル AI 最適化版 (Low-Cost & Local AI Edition)
 
-> **完全無料・ローカル AI パイプライン（Google Gemini API 無料枠マルチキー負荷分散、Clean-Canvas LaMa オンデバイス画像修復、ComicTextDetector 2K 高解像度検出、多言語・ベトナム語組版プリセット）に特化した BalloonsTranslator の強化フォーク版。**
+> **低コストな大規模言語モデル（Low-Cost LLMs）と高性能なオンデバイス AI 技術を組み合わせた BalloonsTranslator の強化フォーク版。Google Gemini Flash シリーズのマルチキー負荷分散、Clean-Canvas LaMa オンデバイス画像修復、ComicTextDetector 2K 高解像度検出、多言語・ベトナム語組版プリセットを統合。**
 
-[![Free AI Models](https://img.shields.io/badge/AI%20Cost-100%25%20Free-brightgreen.svg)](#)
-[![Google Gemini API](https://img.shields.io/badge/LLM-Gemini%20Flash%20Free%20Tier-blue.svg)](#)
+[![AI Architecture](https://img.shields.io/badge/Architecture-Low--Cost%20%26%20Local%20AI-brightgreen.svg)](#)
+[![LLM Engine](https://img.shields.io/badge/LLM-Gemini%20Flash%20Series-blue.svg)](#)
 [![Local Inpainting](https://img.shields.io/badge/Inpaint-LaMa%20Large%20(Local%20CUDA)-orange.svg)](#)
 [![Text Detection](https://img.shields.io/badge/Detector-ComicTextDetector%202K-purple.svg)](#)
 [![License](https://img.shields.io/badge/License-GPL--3.0-yellow.svg)](../LICENSE)
@@ -15,17 +15,15 @@
 
 ---
 
-### 🌟 なぜこの無料 AI 版なのか？ (Why This Fork?)
+### 🌟 本フォークの特徴 (About This Fork)
 
-本フォークは、**高額な商用 API サブスクリプション（OpenAI GPT-4 や DeepL Pro など）を完全に不要にし**、漫画翻訳・消去・検出の全パイプラインを**現在利用可能な最高品質の 100% 無料＆ローカル AI 技術**に置き換えることを目的に開発されました：
+本フォークは、高コストパフォーマンスな言語モデルとオンデバイス AI 技術を連携させ、翻訳者やコミック翻訳グループ向けに高品質かつ運用コストを抑えたワークフローを提供します：
 
-| パイプライン構成 | オリジナル版 / 他フォーク | 無料 AI 版 (本フォーク) | コスト |
-| :--- | :--- | :--- | :---: |
-| **スマート翻訳 (LLM)** | 有料 DeepL / OpenAI に依存。レート制限や文脈の寸断が発生しやすい | **Google Gemini Flash & Lite**（内蔵 `gemini-proxy` による自動マルチキー負荷分散）。複数フキダシの一括文脈結合（Multi-bubble cohesion）、漫画の自然な代名詞・語尾処理、ハルシネーション 100% 防止。 | **¥0 (無料枠)** |
-| **文字消去 (Inpaint)** | グラデーションのトーン段差（stepping）、不自然な継ぎ目、周囲へのピクセル滲み | **Clean-Canvas LaMa Large** ＋ **ラプラシアン・マルチバンド・ピラミッド・ブレンディング**。スクリーントーンの傾斜も滑らかに復元し、マスク外の元画像ピクセルを 100% 保持 (`Unmasked MAE = 0.000000`)。 | **¥0 (ローカル GPU)** |
-| **文字検出 (Detection)**| 枠なし・浮遊文字の検出漏れ、2K 解像度での縮小ボケ | **ComicTextDetector 2K High-DPI (1536px)**（高感度エッジ閾値 `text_thresh=0.25, link_thresh=0.20`）。開放型フキダシや浮遊文字も 100% 捕捉。 | **¥0 (ローカル GPU)** |
-| **OCR (文字認識)** | 外部の有料 API や複雑なセットアップが必要 | **Windows Media OCR**（Windows 標準搭載）＋ **PaddleOCR** オフライン高速フォールバック。 | **¥0 (オフライン)** |
-| **タイポグラフィ (組版)** | 単一フォントによる単調な流し込み | **自動 2 フォント組版システム**：通常会話と叫び・アクションを自動識別し、最適な漫画フォントで流し込み。 | **¥0 (内蔵)** |
+- **文脈認識スマート翻訳 (Low-Cost LLM)**：内蔵 `gemini-proxy` により **Google Gemini Flash & Flash-Lite** を自動マルチキー分散。複数フキダシの一括文脈結合（Multi-bubble cohesion）、漫画の自然な代名詞・語尾処理、ハルシネーション防止スキーマを統合。
+- **オンデバイス文字消去 (Local Neural Inpainting)**：**Clean-Canvas LaMa Large** と **ラプラシアン・マルチバンド・ピラミッド・ブレンディング** をローカル GPU/CPU 上で直接実行。スクリーントーンの傾斜も滑らかに復元し、マスク外の元画像ピクセルを 100% 保持 (`Unmasked MAE = 0.000000`)。
+- **高解像度テキスト検出 (Local AI)**：**ComicTextDetector 2K High-DPI (1536px)** の高感度エッジ検出により、複雑なフキダシや枠外の浮遊文字を確実に捕捉。
+- **ローカルオフライン OCR**：Windows 標準の **Windows Media OCR** と **PaddleOCR** オフラインエンジンを統合し、外部依存なしに素早くテキストを認識。
+- **漫画専用タイポグラフィ組版**：通常会話と叫び・アクションを自動識別し、最適な漫画フォントスタイルを自動適用。
 
 ---
 
@@ -35,17 +33,17 @@
 
 - **原作者 / アップストリーム**：[dmMaze/BallonsTranslator](https://github.com/dmMaze/BallonsTranslator)
 - **ライセンス (License)**：[GNU General Public License v3.0 (GPL-3.0)](../LICENSE) に厳格に準拠し、原著作権表記を保持しています。
-- **フォークの目的**：[@kurrukado](https://github.com/kurrukado/BallonsTranslator) により、**100% 無料かつローカル AI パイプライン**（Gemini 無料枠負荷分散、Clean-Canvas LaMa、ComicTextDetector 2K、ベトナム語・多言語組版）に特化して維持されており、月額 API コストゼロで高品質な翻訳環境を提供します。
+- **フォークの目的**：[@kurrukado](https://github.com/kurrukado/BallonsTranslator) により、低コスト LLM とオンデバイス AI 処理の効率的な統合に注力し、実用的かつ高品質な漫画翻訳環境を提供します。
 
 GUI アーキテクチャ、キャンバスレンダリング、コアアルゴリズムのすべての功績は、原作者 [@dmMaze](https://github.com/dmMaze) 氏およびアップストリームのコントリビューターに帰属します。心より感謝申し上げます！
 
 ---
 
 <p align="center">
-  <img src="src/ui0.jpg" alt="BalloonsTranslator 無料 AI 版 UI">
+  <img src="src/ui0.jpg" alt="BalloonsTranslator UI">
 </p>
 <p align="center">
-  <em>BalloonsTranslator UI (100% 無料 AI モデル版)</em>
+  <em>BalloonsTranslator UI (Low-Cost & Local AI Edition)</em>
 </p>
 
 ---
@@ -56,7 +54,7 @@ GUI アーキテクチャ、キャンバスレンダリング、コアアルゴ�
   - テキスト検出・認識・消去・翻訳・組版回填までをワンストップで実行。
   - 原文の書式（フォント色、縁取り、角度、配置、サイズ）を自動推定して忠実にレイアウト。
   - 日本のマンガ、韓国のウェブトゥーン、海外コミックに対応。
-  - 内蔵の `gemini-proxy` により複数の無料 Gemini API キーを自動ローテーションし、クォータ切れを回避。
+  - 内蔵の `gemini-proxy` により複数の Gemini API キーを自動ローテーションし、安定したスループットと柔軟なモデルフォールバックを確保。
 
 * **画像編集と消去ブラシ**  
   - マスク編集および修復ブラシ（Photoshop のスポット修復ブラシに類似）を搭載。
@@ -88,8 +86,8 @@ GUI アーキテクチャ、キャンバスレンダリング、コアアルゴ�
    cd BallonsTranslator
    ```
 
-3. **無料 Gemini API キーの設定**:
-   - [Google AI Studio](https://aistudio.google.com/) で 1 つ以上の無料 API キーを取得。
+3. **Gemini API キーの設定**:
+   - [Google AI Studio](https://aistudio.google.com/) で 1 つ以上の API キーを取得。
    - `gemini-proxy/api-key.txt`（または `api-key.txt.example` をコピー）を開き、1 行に 1 つずつキーを貼り付け：
      ```text
      AIzaSyYourFirstGeminiApiKey...

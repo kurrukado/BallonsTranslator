@@ -1,12 +1,12 @@
 > [!IMPORTANT]  
 > **If you share machine-translated results publicly without thorough translation or proofreading by experienced translators, please clearly indicate that it is a machine translation.**
 
-# 🎈 BalloonsTranslator — 100% Free AI Models Edition
+# 🎈 BalloonsTranslator — Low-Cost & Local AI Edition
 
-> **A specialized, production-ready fork of BalloonsTranslator optimized for 100% Free & Local AI Pipelines (Google Gemini API Free Tier, On-Device LaMa Inpainting, ComicTextDetector 2K, Windows OCR & Vietnamese Scanlation Typography).**
+> **An enhanced fork of BalloonsTranslator optimized for cost-effective manga/comic translation using low-cost LLMs combined with high-performance local AI engines.**
 
-[![Free AI Models](https://img.shields.io/badge/AI%20Cost-100%25%20Free-brightgreen.svg)](#)
-[![Google Gemini API](https://img.shields.io/badge/LLM-Gemini%20Flash%20Free%20Tier-blue.svg)](#)
+[![AI Architecture](https://img.shields.io/badge/Architecture-Low--Cost%20%26%20Local%20AI-brightgreen.svg)](#)
+[![LLM Engine](https://img.shields.io/badge/LLM-Gemini%20Flash%20Series-blue.svg)](#)
 [![Local Inpainting](https://img.shields.io/badge/Inpaint-LaMa%20Large%20(Local%20CUDA)-orange.svg)](#)
 [![Text Detection](https://img.shields.io/badge/Detector-ComicTextDetector%202K-purple.svg)](#)
 [![License](https://img.shields.io/badge/License-GPL--3.0-yellow.svg)](LICENSE)
@@ -15,17 +15,15 @@
 
 ---
 
-### 🌟 Why This Free AI Edition?
+### 🌟 About This Fork
 
-This fork was created to eliminate all costly API subscriptions (such as OpenAI GPT-4 or DeepL Pro). It replaces the entire translation, inpainting, and text detection pipeline with **the highest quality 100% Free and Local AI technologies available today**:
+This fork is designed to provide cost-effective comic and manga translation workflows by uniting high-throughput, low-cost large language models (LLMs) with specialized, on-device local AI models:
 
-| Pipeline Component | Original / Other Forks | Free AI Edition (This Fork) | Cost |
-| :--- | :--- | :--- | :---: |
-| **Smart Translation (LLM)** | Dependent on paid DeepL / OpenAI; prone to rate limits & disjointed phrasing | **Google Gemini Flash & Lite** via built-in `gemini-proxy` with automatic load balancing. Multi-bubble sentence stitching, contextual manga pronouns, and 100% anti-hallucination. | **$0 (Free Tier)** |
-| **Text Removal (Inpaint)** | Gradient stepping artifacts, visible seams, pixel leakage | **Clean-Canvas LaMa Large** combined with **Laplacian Multi-Band Pyramid Blending**. Seamlessly restores sloped screentones, preserving 100% of original unmasked pixels (`Unmasked MAE = 0.000000`). | **$0 (Local GPU)** |
-| **Text Detection** | Misses free-floating text, downscales 2K high-res panels | **ComicTextDetector 2K High-DPI (1536px)** with high-sensitivity thresholds (`text_thresh=0.25, link_thresh=0.20`), capturing 100% of open bubbles and narration boxes. | **$0 (Local GPU)** |
-| **OCR (Text Recognition)** | Requires paid 3rd-party APIs or heavy setups | **Windows Media OCR** built into Windows + **PaddleOCR** offline fallback. | **$0 (Offline)** |
-| **Typography & Fonts** | Single generic font for all dialogue | **Automatic 2-Font Lettering System**: Normal dialogue (`Yuki-CCMarianChurchlandJournal`) and Shout/Action (`CCWildWordsRoman`) with full Vietnamese diacritics. | **$0 (Built-in)** |
+- **Context-Aware Translation (Low-Cost LLM)**: Utilizes the **Google Gemini Flash & Flash-Lite** family managed by a built-in `gemini-proxy` with multi-key load balancing. Features chapter-batch aggregation for multi-bubble sentence stitching, contextual pronoun alignment, and anti-hallucination validation.
+- **On-Device Inpainting (Local Neural AI)**: Powered by **Clean-Canvas LaMa Large** and **Laplacian Multi-Band Pyramid Blending** executing locally on your GPU/CPU, seamlessly reconstructing halftones and screen textures while preserving original unmasked artwork (`Unmasked MAE = 0.000000`).
+- **High-DPI Text Detection (Local AI)**: Employs **ComicTextDetector 2K High-DPI (1536px)** with enhanced boundary sensitivity to detect standard bubbles, open frames, and free-floating text.
+- **Multi-Tier Local OCR**: Combines native **Windows Media OCR** with **PaddleOCR** offline fallback for fast and accurate character recognition without cloud dependencies.
+- **Automated Typography & Scanlation Presets**: Distinguishes spoken dialogue from shouts/SFX and applies tailored scanlation font styles automatically.
 
 ---
 
@@ -35,17 +33,17 @@ This project is an enhanced fork of the remarkable open-source [**BallonsTransla
 
 - **Original Author / Upstream Repository**: [dmMaze/BallonsTranslator](https://github.com/dmMaze/BallonsTranslator)
 - **License**: Released under the terms of the [GNU General Public License v3.0 (GPL-3.0)](LICENSE), strictly preserving all original copyright notices.
-- **Fork Objectives**: Maintained by [@kurrukado](https://github.com/kurrukado/BallonsTranslator) with a dedicated focus on **100% Free & Local AI Pipelines** (Google Gemini Free-Tier multi-key load balancing, Clean-Canvas LaMa inpainting, ComicTextDetector 2K High-DPI, and Vietnamese scanlation typography presets) to enable high-quality manga translation with zero ongoing API costs.
+- **Fork Objectives**: Maintained by [@kurrukado](https://github.com/kurrukado/BallonsTranslator) with a dedicated focus on combining low-cost LLM translation with on-device local AI processing to deliver efficient, high-quality manga and comic localization.
 
 All foundational GUI architecture, canvas rendering systems, and core algorithms are credited to [@dmMaze](https://github.com/dmMaze) and upstream contributors. Huge thanks to them for creating this project!
 
 ---
 
 <p align="center">
-  <img src="doc/src/ui0.jpg" alt="BalloonsTranslator Free AI Edition UI">
+  <img src="doc/src/ui0.jpg" alt="BalloonsTranslator UI">
 </p>
 <p align="center">
-  <em>BalloonsTranslator UI (Free AI Models Edition)</em>
+  <em>BalloonsTranslator UI (Low-Cost & Local AI Edition)</em>
 </p>
 
 ---
@@ -56,7 +54,7 @@ All foundational GUI architecture, canvas rendering systems, and core algorithms
   - Automatic comic text detection, recognition, inpainting, and translation.
   - Typesetting estimation matches the original text format (color, outline, angle, alignment, and size).
   - Works seamlessly with Japanese Manga, Korean Manhwa, and Western Comics.
-  - Integrated `gemini-proxy` automatically rotates multiple free Gemini API keys, bypassing rate limits effortlessly.
+  - Integrated `gemini-proxy` automatically rotates multiple Gemini API keys, ensuring steady throughput and seamless model fallback.
 
 * **Image Editing & Inpainting**  
   - Supports interactive mask editing and inpaint healing brush (similar to Photoshop's Spot Healing Brush).
@@ -88,8 +86,8 @@ All foundational GUI architecture, canvas rendering systems, and core algorithms
    cd BallonsTranslator
    ```
 
-3. **Configure Free Gemini API Keys**:
-   - Get 1 or more free API keys from [Google AI Studio](https://aistudio.google.com/).
+3. **Configure Gemini API Keys**:
+   - Get 1 or more API keys from [Google AI Studio](https://aistudio.google.com/).
    - Open `gemini-proxy/api-key.txt` (or copy from `api-key.txt.example`) and paste your keys, one per line:
      ```text
      AIzaSyYourFirstGeminiApiKey...
