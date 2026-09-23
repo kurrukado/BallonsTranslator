@@ -33,6 +33,14 @@ var config = Config{
 	BaseURL:      "https://generativelanguage.googleapis.com/v1beta/openai",
 }
 
+var httpClient = &http.Client{
+	Timeout: 180 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:    10,
+		IdleConnTimeout: 90 * time.Second,
+	},
+}
+
 // ============================================================================
 // Event Logger - SSE broadcast
 // ============================================================================
@@ -265,7 +273,7 @@ func (q *RequestQueue) forwardRequest(item *QueueItem) *QueueResponse {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+config.GeminiAPIKey)
 
-	client := &http.Client{Timeout: 180 * time.Second}
+	client := httpClient
 	resp, err := client.Do(req)
 	if err != nil {
 		return &QueueResponse{Error: err, StatusCode: 502}
