@@ -212,20 +212,8 @@ func (q *RequestQueue) StartWorker() {
 			q.lastReq = time.Now()
 			q.mu.Unlock()
 
-			// Handle 429 retry
 			if resp.StatusCode == 429 {
-				broadcaster.Send("ERROR", fmt.Sprintf("#%d got 429 RATE LIMITED", item.ID), "error")
-				for retry := 1; retry <= config.MaxRetries; retry++ {
-					backoff := time.Duration(retry*retry) * 15 * time.Second
-					broadcaster.Send("QUEUE", fmt.Sprintf("#%d retry %d/%d, backoff %v", item.ID, retry, config.MaxRetries, backoff), "wait")
-					history.Update(item.ID, "processing", 429, fmt.Sprintf("retry %d/%d", retry, config.MaxRetries), "")
-					time.Sleep(backoff)
-					resp = q.forwardRequest(item)
-					if resp.StatusCode != 429 {
-						broadcaster.Send("PROXY", fmt.Sprintf("#%d retry %d succeeded", item.ID, retry), "proxy")
-						break
-					}
-				}
+				broadcaster.Send("ERROR", fmt.Sprintf("#%d got 429 RATE LIMITED - fast forwarding to client", item.ID), "error")
 			}
 
 			dur := time.Since(start)
