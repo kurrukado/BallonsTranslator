@@ -92,9 +92,13 @@ class LeftBar(Widget):
         actionOpenProj = QAction(self.tr("Open Project ... *.json"), self)
         actionOpenProj.triggered.connect(self.onOpenProj)
 
-        actionSaveProj = QAction(self.tr("Save Project"), self)
+        actionSaveProj = QAction(self.tr("Save Project (Ctrl+S)"), self)
         self.save_proj = actionSaveProj.triggered
         actionSaveProj.setShortcut(QKeySequence.StandardKey.Save)
+
+        actionSaveAllProj = QAction(self.tr("Save & Render All Pages (Ctrl+Shift+S)"), self)
+        self.save_all_proj = actionSaveAllProj.triggered
+        actionSaveAllProj.setShortcut(QKeySequence("Ctrl+Shift+S"))
 
         actionExportAsDoc = QAction(self.tr("Export as Doc"), self)
         self.export_doc = actionExportAsDoc.triggered
@@ -122,6 +126,7 @@ class LeftBar(Widget):
         openMenu.addSeparator()
         openMenu.addActions([
             actionSaveProj,
+            actionSaveAllProj,
             actionExportAsDoc,
             actionImportFromDoc,
             actionExportSrcTxt,

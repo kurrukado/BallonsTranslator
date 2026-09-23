@@ -6,6 +6,27 @@ from .stroke_width_calculator import strokewidth_check
 
 opencv_inpaint = lambda img, mask: cv2.inpaint(img, mask, 3, cv2.INPAINT_NS)
 
+def _is_gradient_bg(gray_img: np.ndarray, threshold: float = 8.0, mask: np.ndarray = None) -> bool:
+    """Detect if background has a gradient (screentone slope) via 2D Sobel magnitude.
+    Returns True when the gradient mean (excluding text edges / top 20% extreme gradients)
+    exceeds the threshold, indicating a sloped screentone that must NOT use Convex Hull fill.
+    """
+    if gray_img is None or gray_img.size == 0 or min(gray_img.shape[:2]) < 3:
+        return False
+    if gray_img.ndim == 3:
+        gray_img = cv2.cvtColor(gray_img, cv2.COLOR_RGB2GRAY)
+    gx = cv2.Sobel(gray_img, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(gray_img, cv2.CV_32F, 0, 1, ksize=3)
+    mag = cv2.magnitude(gx, gy)
+    if mask is not None and mask.shape == gray_img.shape:
+        bg_mag = mag[mask == 0]
+        if bg_mag.size > 0:
+            mag = bg_mag
+    k = int(mag.size * 0.8)
+    if 0 < k < mag.size:
+        mag = np.partition(mag.ravel(), k)[:k]
+    return float(np.mean(mag)) > threshold
+
 def show_img_by_dict(imgdicts):
     for keyname in imgdicts.keys():
         cv2.imshow(keyname, imgdicts[keyname])
@@ -185,10 +206,44 @@ def canny_flood(img, show_process=False, inpaint_sdthresh=10, **kwargs):
     inner_rect = None
     threshed = np.zeros((img.shape[0], img.shape[1]), np.uint8)
 
+    box_h = img.shape[0]
+    dynamic_k = max(7, 2 * int((float(box_h) * 0.12) // 2) + 1)
+    element_dynamic = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (dynamic_k, dynamic_k))
+
     if bground_aver[0] != -1:
         letter_aver, threshed = letter_calculator(img, mask, bground_aver, show_process=show_process)
         if letter_aver[0] != -1:
-            mask = cv2.dilate(threshed, kernel, iterations=1)
+            # Dynamic Morphological Dilation with cv2.MORPH_ELLIPSE and iterations=2
+            mask = cv2.dilate(threshed, element_dynamic, iterations=2)
+            
+            # Outer-stroke enhancement with adaptive thresholding
+            gray_crop = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if img.ndim == 3 else img.copy()
+            grad_x = cv2.Sobel(gray_crop, cv2.CV_32F, 1, 0, ksize=3)
+            grad_y = cv2.Sobel(gray_crop, cv2.CV_32F, 0, 1, ksize=3)
+            border_std = float(np.std(cv2.magnitude(grad_x, grad_y)))
+            if border_std > 25.0:
+                thresh_outer = cv2.adaptiveThreshold(gray_crop, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+                stroke_part = cv2.bitwise_and(thresh_outer, cv2.dilate(mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))))
+                mask = cv2.bitwise_or(mask, stroke_part)
+
+            # Convex Hull Bypass: skip on gradient (screentone slope) backgrounds or free-floating text
+            # to prevent masking away gradient reference pixels that LaMa needs for seamless inpaint.
+            is_balloon = kwargs.get('is_balloon', True)
+            gray_roi = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if img.ndim == 3 else img.copy()
+            skip_hull = _is_gradient_bg(gray_roi, mask=mask) or not is_balloon
+            bubble_area = float(np.count_nonzero(ballon_mask > 0))
+            if not skip_hull and bubble_area > 0:
+                text_density = float(np.count_nonzero(mask > 0)) / bubble_area
+                if text_density > 0.35:
+                    pts = cv2.findNonZero(mask)
+                    if pts is not None and len(pts) >= 3:
+                        hull = cv2.convexHull(pts)
+                        cv2.fillConvexPoly(mask, hull, 255)
+            elif skip_hull:
+                # Glyph-Level Mask: small elliptic kernel (ksize=3, iter=1) — hug glyph contours closely
+                glyph_elem = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+                mask = cv2.dilate(threshed, glyph_elem, iterations=1)
+
             inner_rect = cv2.boundingRect(cv2.findNonZero(mask))
     else: letter_aver = [0, 0, 0]
 
@@ -324,6 +379,31 @@ def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, apply_st
             text_mask[labcord] = 255
 
     text_mask = cv2.bitwise_and(text_mask, ballon_mask)
+
+    # Task A.1: Lớp Lọc Otsu/Adaptive Thresholding Tăng Cường Viền
+    gray_crop = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if img.ndim == 3 else img.copy()
+    grad_x = cv2.Sobel(gray_crop, cv2.CV_32F, 1, 0, ksize=3)
+    grad_y = cv2.Sobel(gray_crop, cv2.CV_32F, 0, 1, ksize=3)
+    border_std = float(np.std(cv2.magnitude(grad_x, grad_y)))
+    if border_std > 25.0:
+        thresh_outer = cv2.adaptiveThreshold(gray_crop, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+        stroke_part = cv2.bitwise_and(thresh_outer, cv2.dilate(text_mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))))
+        text_mask = cv2.bitwise_or(text_mask, stroke_part)
+
+    # Task A.3: Gradient-Aware Convex Hull Bypass
+    # Skip Convex Hull on gradient/screentone slope backgrounds or free-floating text —
+    # preserves gradient reference pixels that LaMa FFC needs for seamless inpainting.
+    is_balloon = kwargs.get('is_balloon', True)
+    skip_hull = _is_gradient_bg(gray_crop, mask=text_mask) or not is_balloon
+    bubble_interior_area = float(np.count_nonzero(ballon_mask > 0))
+    if not skip_hull and bubble_interior_area > 0:
+        text_density = float(np.count_nonzero(text_mask > 0)) / bubble_interior_area
+        if text_density > 0.35:
+            pts = cv2.findNonZero(text_mask)
+            if pts is not None and len(pts) >= 3:
+                hull = cv2.convexHull(pts)
+                cv2.fillConvexPoly(text_mask, hull, 255)
+
     if apply_strokewidth_check > 0:
         text_mask = strokewidth_check(text_mask, labels, num_labels, stats, debug_type=show_process-1)
         
@@ -336,7 +416,17 @@ def connected_canny_flood(img, show_process=False, inpaint_sdthresh=10, apply_st
 
     bground_aver, bground_region, sd = bground_calculator(img, bg_mask)
 
-    mask = cv2.GaussianBlur(text_mask,(3,3),cv2.BORDER_DEFAULT)
+    # Task A.2: Dynamic Morphological Dilation — smaller kernel on gradient backgrounds
+    box_h = img.shape[0]
+    if skip_hull:
+        # Glyph-level dilation: ksize=3, iter=1-2 to tightly hug each glyph contour
+        element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        dilated_mask = cv2.dilate(text_mask, element, iterations=2)
+    else:
+        dynamic_k = max(7, 2 * int((float(box_h) * 0.12) // 2) + 1)
+        element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (dynamic_k, dynamic_k))
+        dilated_mask = cv2.dilate(text_mask, element, iterations=2)
+    mask = cv2.GaussianBlur(dilated_mask, (5, 5), 1.0)
     _, mask = cv2.threshold(mask, 1, 255, cv2.THRESH_BINARY)
     if sd != -1 and sd < inpaint_sdthresh:
         need_inpaint = False

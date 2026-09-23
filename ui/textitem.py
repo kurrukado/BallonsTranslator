@@ -3,11 +3,12 @@ import numpy as np
 from typing import List, Union, Tuple
 
 from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QStyle, QGraphicsSceneMouseEvent
-from qtpy.QtCore import Qt, QRect, QRectF, QPointF, Signal, QSizeF
+from qtpy.QtCore import Qt, QRect, QRectF, QPointF, Signal, QSizeF, QMimeData
 from qtpy.QtGui import (QGradient, QKeyEvent, QFont, QTextCursor, QPixmap, QPainterPath, QTextDocument, 
                        QInputMethodEvent, QPainter, QPen, QColor, QTextCharFormat, QTextDocument, QLinearGradient, 
                        QBrush, QPalette, QAbstractTextDocumentLayout)
 
+from utils.config import pcfg
 from utils.textblock import TextBlock, FontFormat, TextAlignment, LineSpacingType
 from utils.imgproc_utils import xywh2xyxypoly, rotate_polygons
 from utils.fontformat import FontFormat, px2pt, pt2px
@@ -501,7 +502,24 @@ class TextBlkItem(QGraphicsTextItem):
             cursor.setPosition(hit)
             self.setTextCursor(cursor)
 
+    def insertFromMimeData(self, source: QMimeData) -> None:
+        if pcfg.let_uppercase_flag and source.hasText():
+            mime = QMimeData()
+            mime.setText(source.text().upper())
+            super().insertFromMimeData(mime)
+        else:
+            super().insertFromMimeData(source)
+
     def endEdit(self, keep_focus=True) -> None:
+        if pcfg.let_uppercase_flag and not self.pre_editing:
+            current_text = self.toPlainText()
+            upper_text = current_text.upper()
+            if current_text != upper_text:
+                self.block_change_signal = True
+                cursor = self.textCursor()
+                cursor.select(QTextCursor.SelectionType.Document)
+                cursor.insertText(upper_text)
+                self.block_change_signal = False
         self.end_edit.emit(self.idx)
         cursor = self.textCursor()
         cursor.clearSelection()

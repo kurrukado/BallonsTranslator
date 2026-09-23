@@ -191,7 +191,9 @@ class TranslateThread(ModuleThread):
             cfg_module.translator = self.translator.name
         except Exception as e:
             if old_translator is None:
-                old_translator = TRANSLATORS.module_dict['google']('简体中文', 'English', raise_unsupported_lang=False)
+                default_cls = TRANSLATORS.module_dict.get('LLM_API_Translator') or TRANSLATORS.module_dict.get('Copy Source') or next(iter(TRANSLATORS.module_dict.values()), None)
+                if default_cls is not None:
+                    old_translator = default_cls('English', 'Tiếng Việt', raise_unsupported_lang=False)
             self.translator = old_translator
             msg = self.tr('Failed to set translator ') + translator
             create_error_dialog(e, msg, 'FailedSetTranslator')
@@ -200,16 +202,44 @@ class TranslateThread(ModuleThread):
         self.finish_set_module.emit()
 
     def setTranslator(self, translator: str):
-        if translator in ['Sugoi']:
-            self._set_translator(translator)
-        else:
-            self.job = lambda : self._set_translator(translator)
-            self.start()
+        self.job = lambda : self._set_translator(translator)
+        self.start()
+
+    def _extract_page_context(self, page_dict, page_key: str) -> dict:
+        context = {}
+        if hasattr(self, "imgtrans_proj") and self.imgtrans_proj is not None:
+            try:
+                curr_idx = self.imgtrans_proj.pagename2idx(page_key)
+                if curr_idx > 0:
+                    prev_page_name = self.imgtrans_proj.idx2pagename(curr_idx - 1)
+                    if prev_page_name in self.imgtrans_proj.pages:
+                        prev_blks = self.imgtrans_proj.pages[prev_page_name]
+                        from modules.translators.context_engine import DialogueItem, CharacterProfile, CharacterMemory, GlossaryManager
+                        history = []
+                        for blk in prev_blks:
+                            txt = blk.get_text() if hasattr(blk, "get_text") else str(blk)
+                            if txt.strip():
+                                history.append(
+                                    DialogueItem(
+                                        id=len(history) + 1,
+                                        source=txt,
+                                        translated=getattr(blk, "translation", None),
+                                        speaker=getattr(blk, "speaker", None),
+                                    )
+                                )
+                        if history:
+                            context["dialogue_history"] = history
+                if hasattr(self.imgtrans_proj, "img_array") and self.imgtrans_proj.img_array is not None:
+                    context["img_shape"] = self.imgtrans_proj.img_array.shape[:2]
+            except Exception:
+                pass
+        return context
 
     def _translate_page(self, page_dict, page_key: str, emit_finished=True):
         page = page_dict[page_key]
+        page_context = self._extract_page_context(page_dict, page_key)
         try:
-            self.translator.translate_textblk_lst(page)
+            self.translator.translate_textblk_lst(page, page_context=page_context)
         except Exception as e:
             create_error_dialog(e, self.tr('Translation Failed.'), 'TranslationFailed')
         if emit_finished:
@@ -242,24 +272,18 @@ class TranslateThread(ModuleThread):
                 continue
             
             page_key = self.pipeline_pagekey_queue.pop(0)
-            self.blockSignals(True)
+            LOGGER.info(f"🌐 [Translate] Bắt đầu tiến trình dịch trang '{page_key}'...")
             trans_success = True
             try:
                 self._translate_page(self.imgtrans_proj.pages, page_key, emit_finished=False)
+                LOGGER.info(f"✓ [Translate] Hoàn tất dịch xong toàn bộ khối thoại trên trang '{page_key}'.")
             except Exception as e:
-                # TODO: allowing retry/skip/terminate
                 trans_success = False
+                LOGGER.error(f"❌ [Translate] Lỗi dịch thuật trên trang '{page_key}': {e}")
                 msg = self.tr('Translation Failed.')
                 if isinstance(e, MissingTranslatorParams):
                     msg = msg + '\n' + str(e) + self.tr(' is required for ' + self.translator.name)
-                    
-                self.blockSignals(False)
                 create_error_dialog(e, msg, 'TranslationFailed')
-                # self.imgtrans_proj = None
-                # self.finished_counter = 0
-                # self.pipeline_pagekey_queue = []
-                # return
-            self.blockSignals(False)
             self.finished_counter += 1
             if trans_success:
                 self.imgtrans_proj.update_page_progress(page_key, RunStatus.FIN_TRANSLATE)
@@ -272,6 +296,8 @@ class TranslateThread(ModuleThread):
 class ImgtransThread(QThread):
 
     pipeline_stopped = Signal()
+    pipeline_finished = Signal()
+    page_trans_finished = Signal(int)
     update_detect_progress = Signal(int)
     update_ocr_progress = Signal(int)
     update_translate_progress = Signal(int)
@@ -301,7 +327,9 @@ class ImgtransThread(QThread):
         self.job = None
         self.imgtrans_proj: ProjImgTrans = None
         self.stop_requested = False
+        self.active_job_id: str = None
         self.pages_to_process = None  # 需要处理的页面列表（用于继续运行模式）
+        self.process_idx_to_page_idx = {}
 
     def on_module_thread_stopped(self):
         while True:
@@ -329,11 +357,13 @@ class ImgtransThread(QThread):
     def inpainter(self) -> InpainterBase:
         return self.inpaint_thread.inpainter
 
-    def runImgtransPipeline(self, imgtrans_proj: ProjImgTrans, pages_to_process=None):
+    def runImgtransPipeline(self, imgtrans_proj: ProjImgTrans, pages_to_process=None, job_id: str = None):
+        import uuid
         self.imgtrans_proj = imgtrans_proj
         self.pages_to_process = pages_to_process  # 保存需要处理的页面列表
         self.num_pages = len(self.imgtrans_proj.pages)
         self.stop_requested = False
+        self.active_job_id = job_id or uuid.uuid4().hex
         # 创建处理索引到实际页面索引的映射
         self.process_idx_to_page_idx = {}
         self.job = self._imgtrans_pipeline
@@ -360,7 +390,30 @@ class ImgtransThread(QThread):
             self.finish_blktrans.emit(mode, blk_ids)
 
         if mode != 0 and mode < 3:
-            self.translate_thread.module.translate_textblk_lst(blk_list)
+            # Luồng B (Mode 2): Direct single bubble passthrough for manual UI edits
+            if len(blk_list) == 1 and hasattr(self.translate_thread.module, "translate_single"):
+                blk = blk_list[0]
+                src_txt = blk.get_text() if hasattr(blk, "get_text") else str(blk)
+                if src_txt and src_txt.strip():
+                    context_hints = None
+                    try:
+                        all_page_blks = self.imgtrans_proj.current_block_list() if self.imgtrans_proj else []
+                        if blk_ids and len(blk_ids) > 0:
+                            target_idx = blk_ids[0]
+                            prev_txt = all_page_blks[target_idx - 1].get_text() if (0 < target_idx < len(all_page_blks)) else ""
+                            next_txt = all_page_blks[target_idx + 1].get_text() if (target_idx + 1 < len(all_page_blks)) else ""
+                            context_hints = {
+                                "previous": prev_txt,
+                                "next": next_txt,
+                                "block_type": "DIALOGUE" if getattr(blk, "is_balloon", True) else "NARRATION",
+                            }
+                    except Exception:
+                        pass
+                    blk.translation = self.translate_thread.module.translate_single(
+                        src_txt, cfg_module.translate_source, cfg_module.translate_target, context_hints=context_hints
+                    )
+            else:
+                self.translate_thread.module.translate_textblk_lst(blk_list)
             self.finish_blktrans.emit(mode, blk_ids)
         if mode > 1:
             im_h, im_w = tgt_img.shape[:2]
@@ -410,29 +463,49 @@ class ImgtransThread(QThread):
         self.translate_thread.num_process_pages = self.num_pages
 
         low_vram_trans = False
+        use_chapter_batch = False
+        translation_proxy = None
         if self.translator is not None:
             low_vram_trans = self.translator.low_vram_mode
-            self.parallel_trans = not self.translator.is_computational_intensive() and not low_vram_trans
+            use_chapter_batch = cfg_module.enable_translate and hasattr(self.translator, "translate_chapter_batch")
+            if use_chapter_batch:
+                self.parallel_trans = False
+                from modules.translators.translation_proxy import TranslationProxy
+                translation_proxy = TranslationProxy()
+                session_page_indices = [self.imgtrans_proj.pagename2idx(p) for p in pages_to_iterate]
+                session_page_names = {self.imgtrans_proj.pagename2idx(p): p for p in pages_to_iterate}
+                translation_proxy.start_session(session_page_indices, page_names=session_page_names, timeout_seconds=120.0)
+            else:
+                self.parallel_trans = not self.translator.is_computational_intensive() and not low_vram_trans
         else:
             self.parallel_trans = False
         if self.parallel_trans and cfg_module.enable_translate:
             self.translate_thread.runTranslatePipeline(self.imgtrans_proj)
 
+        current_job_id = self.active_job_id or "job_default"
+        LOGGER.info(f"🚀 [JOB {current_job_id[:8]}] CREATED -> Processing {len(pages_to_iterate)} pages")
+
         for imgname in pages_to_iterate:
             
-            # 检查是否请求停止
-            if self.stop_requested:
-                LOGGER.info('Image translation pipeline stopped by user')
-                break
+            # Check for cancellation or stale job ID
+            if self.stop_requested or (self.active_job_id != current_job_id):
+                LOGGER.warning(f"🛑 [JOB {current_job_id[:8]}] Pipeline stopped or superseded by new job (Active: {self.active_job_id[:8] if self.active_job_id else 'None'})")
+                if translation_proxy:
+                    translation_proxy.cancel_session()
+                self.pipeline_stopped.emit()
+                return
                 
+            LOGGER.info(f"🚀 [JOB {current_job_id[:8]}] [Bắt Đầu] Đang xử lý trang truyện '{imgname}'...")
             img = self.imgtrans_proj.read_img(imgname)
             mask = blk_list = None
             need_save_mask = False
             blk_removed: List[TextBlock] = []
             if cfg_module.enable_detect:
+                LOGGER.info(f"🔍 [JOB {current_job_id[:8]}] DETECTING: Đang quét phát hiện bong bóng thoại & khối chữ...")
                 try:
                     mask, blk_list = self.textdetector.detect(img, self.imgtrans_proj)
                     need_save_mask = True
+                    LOGGER.info(f"✓ [JOB {current_job_id[:8]}] DETECTED: Phát hiện thành công {len(blk_list)} khối văn bản.")
                 except Exception as e:
                     create_error_dialog(e, self.tr('Text Detection Failed.'), 'TextDetectFailed')
                     blk_list = []
@@ -455,11 +528,24 @@ class ImgtransThread(QThread):
             if blk_list is None:
                 blk_list = self.imgtrans_proj.pages[imgname] if imgname in self.imgtrans_proj.pages else []
 
+            detected_count = len(blk_list) if blk_list is not None else (len(self.imgtrans_proj.pages[imgname]) if imgname in self.imgtrans_proj.pages else 0)
+
             if cfg_module.enable_ocr:
+                LOGGER.info(f"📖 [JOB {current_job_id[:8]}] OCR_RUNNING: Đang nhận diện ký tự ({len(blk_list)} khối)...")
                 try:
                     self.ocr.run_ocr(img, blk_list)
+                    ocr_valid_count = sum(1 for b in blk_list if b.get_text() and b.get_text().strip())
+                    LOGGER.info(f"✓ [JOB {current_job_id[:8]}] OCR_VALIDATED: Nhận diện hoàn tất {len(blk_list)}/{detected_count} khối thoại (Không rỗng: {ocr_valid_count}/{detected_count}).")
+                    
+                    # Hard assertion: All detected boxes must be retained through OCR
+                    if len(blk_list) != detected_count:
+                        LOGGER.error(f"❌ [OCR INTEGRITY ERROR] Detected {detected_count} boxes but OCR yielded {len(blk_list)} blocks on '{imgname}'!")
+                        raise RuntimeError(f"OCR Integrity Error: Expected {detected_count} blocks, got {len(blk_list)} on '{imgname}'")
                 except Exception as e:
                     create_error_dialog(e, self.tr('OCR Failed.'), 'OCRFailed')
+                    if translation_proxy:
+                        p_idx = self.imgtrans_proj.pagename2idx(imgname)
+                        translation_proxy.mark_page_failed(p_idx, str(e))
                 self.ocr_counter += 1
 
                 if pcfg.restore_ocr_empty:
@@ -504,15 +590,8 @@ class ImgtransThread(QThread):
                 self.imgtrans_proj.save_mask(imgname, mask)
                 need_save_mask = False
 
-            if cfg_module.enable_translate:
-                if self.parallel_trans:
-                    self.translate_thread.push_pagekey_queue(imgname)
-                elif not low_vram_trans:
-                    self.translator.translate_textblk_lst(blk_list)
-                    self.translate_counter += 1
-                    self.update_translate_progress.emit(self.translate_counter)
-                        
             if cfg_module.enable_inpaint:
+                LOGGER.info(f"🎨 [JOB {current_job_id[:8]}] INPAINTING: Đang xóa chữ và khôi phục nền ảnh...")
                 if mask is None:
                     mask = self.imgtrans_proj.load_mask_by_imgname(imgname)
                     
@@ -520,8 +599,12 @@ class ImgtransThread(QThread):
                     try:
                         inpainted = self.inpainter.inpaint(img, mask, blk_list)
                         self.imgtrans_proj.save_inpainted(imgname, inpainted)
+                        LOGGER.info(f"✓ [JOB {current_job_id[:8]}] INPAINT_VALIDATED: Khôi phục nền hoàn tất.")
                     except Exception as e:
                         create_error_dialog(e, self.tr('Inpainting Failed.'), 'InpaintFailed')
+                        if translation_proxy:
+                            p_idx = self.imgtrans_proj.pagename2idx(imgname)
+                            translation_proxy.mark_page_failed(p_idx, str(e))
                     
                 self.inpaint_counter += 1
                 self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_INPAINT)
@@ -529,22 +612,92 @@ class ImgtransThread(QThread):
             else:
                 if len(blk_removed) > 0:
                     self.imgtrans_proj.load_mask_by_imgname
-        
-        if cfg_module.enable_translate and low_vram_trans:
-            unload_modules(self, ['textdetector', 'inpainter', 'ocr'])
-            for imgname in pages_to_iterate:
-                # 检查是否请求停止
-                if self.stop_requested:
-                    LOGGER.info('Translation stopped by user')
-                    break
-                    
-                blk_list = self.imgtrans_proj.pages[imgname]
-                self.translator.translate_textblk_lst(blk_list)
-                self.translate_counter += 1
-                self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_TRANSLATE)
-                self.update_translate_progress.emit(self.translate_counter)
 
-        if self.stop_requested and (not cfg_module.enable_translate or not self.parallel_trans):
+            if cfg_module.enable_translate:
+                if use_chapter_batch and translation_proxy is not None:
+                    # Page Completion Barrier: Enqueue ONLY after OCR & Inpaint are complete
+                    p_idx = self.imgtrans_proj.pagename2idx(imgname)
+                    page_dialogues = []
+                    for d_id, blk in enumerate(blk_list, start=1):
+                        txt = blk.get_text() if hasattr(blk, "get_text") else str(blk)
+                        if txt and txt.strip():
+                            page_dialogues.append({
+                                "id": d_id,
+                                "text": txt.strip(),
+                                "reading_order": d_id,
+                                "block_type": "DIALOGUE" if getattr(blk, "is_balloon", True) else "NARRATION",
+                            })
+                    translation_proxy.mark_page_completed(p_idx, page_dialogues, page_name=imgname)
+                    LOGGER.info(f"⏳ [JOB {current_job_id[:8]}] Đã đệm {len(page_dialogues)} câu thoại của trang '{imgname}' (chờ gộp chương).")
+                else:
+                    if self.parallel_trans:
+                        self.translate_thread.push_pagekey_queue(imgname)
+                    elif not low_vram_trans:
+                        page_ctx = self.translate_thread._extract_page_context(self.imgtrans_proj.pages, imgname) if hasattr(self, "translate_thread") else None
+                        self.translator.translate_textblk_lst(blk_list, page_context=page_ctx)
+                        self.translate_counter += 1
+                        self.update_translate_progress.emit(self.translate_counter)
+                        LOGGER.info(f"✓ [JOB {current_job_id[:8]}] Đã dịch xong trang '{imgname}'.")
+        
+        # PHASE 2: CHAPTER BATCH TRANSLATION DISPATCH (Luồng A - Mode 1)
+        if cfg_module.enable_translate and translation_proxy is not None and not translation_proxy.is_empty():
+            if not self.stop_requested and self.active_job_id == current_job_id and not translation_proxy.is_cancelled():
+                LOGGER.info(f"🌐 [JOB {current_job_id[:8]}] TRANSLATING: Đang gửi toàn bộ {translation_proxy.total_dialogues_count()} câu thoại của {len(pages_to_iterate)} trang tới Gemini...")
+                if hasattr(self.translator, "translate_chapter_batch"):
+                    try:
+                        result_map = self.translator.translate_chapter_batch(
+                            translation_proxy,
+                            src_lang=cfg_module.translate_source,
+                            tgt_lang=cfg_module.translate_target
+                        )
+                        # Unpack results into each page
+                        for imgname in pages_to_iterate:
+                            p_idx = self.imgtrans_proj.pagename2idx(imgname)
+                            blk_list = self.imgtrans_proj.pages.get(imgname, [])
+                            page_trans_map = result_map.get(p_idx, {})
+                            for d_id, blk in enumerate(blk_list, start=1):
+                                res_item = page_trans_map.get(d_id) or page_trans_map.get(str(d_id))
+                                if res_item:
+                                    blk.translation = res_item.get("translation", "")
+                                    if hasattr(blk, "emotion_tag"):
+                                        blk.emotion_tag = res_item.get("emotion_tag", "normal")
+                            
+                            self.translate_counter += 1
+                            self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_TRANSLATE)
+                            self.update_translate_progress.emit(self.translate_counter)
+                            LOGGER.info(f"✓ [JOB {current_job_id[:8]}] TRANSLATED: Đã gán bản dịch nhất quán cho trang '{imgname}'.")
+                    except Exception as e:
+                        LOGGER.error(f"❌ [JOB {current_job_id[:8]}] [Chapter Batch Translation Error] {e}. Fallback to per-page translation...")
+                        for imgname in pages_to_iterate:
+                            blk_list = self.imgtrans_proj.pages.get(imgname, [])
+                            page_ctx = self.translate_thread._extract_page_context(self.imgtrans_proj.pages, imgname) if hasattr(self, "translate_thread") else None
+                            self.translator.translate_textblk_lst(blk_list, page_context=page_ctx)
+                            self.translate_counter += 1
+                            self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_TRANSLATE)
+                            self.update_translate_progress.emit(self.translate_counter)
+                else:
+                    for imgname in pages_to_iterate:
+                        blk_list = self.imgtrans_proj.pages.get(imgname, [])
+                        page_ctx = self.translate_thread._extract_page_context(self.imgtrans_proj.pages, imgname) if hasattr(self, "translate_thread") else None
+                        self.translator.translate_textblk_lst(blk_list, page_context=page_ctx)
+                        self.translate_counter += 1
+                        self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_TRANSLATE)
+                        self.update_translate_progress.emit(self.translate_counter)
+
+        # PHASE 3: FINAL ATOMIC VALIDATION & SYNCHRONOUS UI NOTIFICATION
+        if not self.stop_requested and (self.active_job_id == current_job_id):
+            LOGGER.info(f"✨ [JOB {current_job_id[:8]}] ATOMIC_COMMIT: Toàn bộ {len(pages_to_iterate)} trang đã hoàn tất mọi công đoạn và kiểm định hợp lệ.")
+            for imgname in pages_to_iterate:
+                if self.stop_requested or (self.active_job_id != current_job_id):
+                    LOGGER.warning(f"🛑 [JOB {current_job_id[:8]}] Commit aborted due to cancellation or stale state.")
+                    self.pipeline_stopped.emit()
+                    return
+                p_idx = self.imgtrans_proj.pagename2idx(imgname)
+                self.page_trans_finished.emit(p_idx)
+            if not self.stop_requested and (self.active_job_id == current_job_id):
+                LOGGER.info(f"🎉 [JOB {current_job_id[:8]}] COMPLETED: Pipeline finished successfully.")
+                self.pipeline_finished.emit()
+        else:
             self.pipeline_stopped.emit()
 
     def detect_finished(self) -> bool:
@@ -651,6 +804,8 @@ class ModuleManager(QObject):
         self.imgtrans_thread.update_inpaint_progress.connect(self.on_update_inpaint_progress)
         self.imgtrans_thread.finish_blktrans_stage.connect(self.on_finish_blktrans_stage)
         self.imgtrans_thread.finish_blktrans.connect(self.on_finish_blktrans)
+        self.imgtrans_thread.page_trans_finished.connect(self.page_trans_finished)
+        self.imgtrans_thread.pipeline_finished.connect(self.on_pipeline_finished)
         self.imgtrans_thread.pipeline_stopped.connect(self.on_imgtrans_thread_stopped)
 
         self.translator_panel = translator_panel = config_panel.trans_config_panel        
@@ -796,57 +951,38 @@ class ModuleManager(QObject):
         self.blktrans_pipeline_finished.emit(mode, blk_ids)
         self.progress_msgbox.hide()
 
+    def on_pipeline_finished(self):
+        """Authoritative completion: All pages, OCR, inpainting, and translation verified."""
+        self.progress_msgbox.hide()
+        self.imgtrans_pipeline_finished.emit()
+
     def on_update_detect_progress(self, progress: int):
-        ri = self.imgtrans_thread.recent_finished_index(progress)
         if 'detect' in shared.pbar:
             shared.pbar['detect'].update(1)
-        progress = int(progress / self.imgtrans_thread.num_pages * 100)
-        self.progress_msgbox.updateDetectProgress(progress)
-        if ri != self.last_finished_index:
-            self.last_finished_index = ri
-            self.page_trans_finished.emit(ri)
-        if progress == 100:
-            self.finishImgtransPipeline()
+        progress_pct = int(progress / max(1, self.imgtrans_thread.num_pages) * 100)
+        self.progress_msgbox.updateDetectProgress(progress_pct)
 
     def on_update_ocr_progress(self, progress: int):
-        ri = self.imgtrans_thread.recent_finished_index(progress)
         if 'ocr' in shared.pbar:
             shared.pbar['ocr'].update(1)
-        progress = int(progress / self.imgtrans_thread.num_pages * 100)
-        self.progress_msgbox.updateOCRProgress(progress)
-        if ri != self.last_finished_index:
-            self.last_finished_index = ri
-            self.page_trans_finished.emit(ri)
-        if progress == 100:
-            self.finishImgtransPipeline()
+        progress_pct = int(progress / max(1, self.imgtrans_thread.num_pages) * 100)
+        self.progress_msgbox.updateOCRProgress(progress_pct)
 
     def on_update_translate_progress(self, progress: int):
-        ri = self.imgtrans_thread.recent_finished_index(progress)
         if 'translate' in shared.pbar:
             shared.pbar['translate'].update(1)
-        progress = int(progress / self.imgtrans_thread.num_pages * 100)
-        self.progress_msgbox.updateTranslateProgress(progress)
-        if ri != self.last_finished_index:
-            self.last_finished_index = ri
-            self.page_trans_finished.emit(ri)
-        if progress == 100:
-            self.finishImgtransPipeline()
+        progress_pct = int(progress / max(1, self.imgtrans_thread.num_pages) * 100)
+        self.progress_msgbox.updateTranslateProgress(progress_pct)
 
     def on_update_inpaint_progress(self, progress: int):
-        ri = self.imgtrans_thread.recent_finished_index(progress)
         if 'inpaint' in shared.pbar:
             shared.pbar['inpaint'].update(1)
-        progress = int(progress / self.imgtrans_thread.num_pages * 100)
-        self.progress_msgbox.updateInpaintProgress(progress)
-        if ri != self.last_finished_index:
-            self.last_finished_index = ri
-            self.page_trans_finished.emit(ri)
-        if progress == 100:
-            self.finishImgtransPipeline()
+        progress_pct = int(progress / max(1, self.imgtrans_thread.num_pages) * 100)
+        self.progress_msgbox.updateInpaintProgress(progress_pct)
 
     def progress(self):
         progress = {}
-        num_pages = self.imgtrans_thread.num_pages
+        num_pages = max(1, self.imgtrans_thread.num_pages)
         if cfg_module.enable_detect:
             progress['detect'] = self.imgtrans_thread.detect_counter / num_pages
         if cfg_module.enable_ocr:
@@ -871,10 +1007,8 @@ class ModuleManager(QObject):
             self.imgtrans_pipeline_finished.emit()
     
     def on_imgtrans_thread_stopped(self):
-        """线程完成时确保关闭进度对话框"""
-        # 线程完成了，直接关闭窗口
+        """Pipeline cancelled/stopped: close progress dialog safely."""
         self.progress_msgbox.hide()
-        self.imgtrans_pipeline_finished.emit()
 
     def setTranslator(self, translator: str = None):
         if translator is None:

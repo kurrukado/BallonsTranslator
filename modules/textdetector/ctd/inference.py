@@ -254,7 +254,7 @@ class TextDetector:
     lang_list = ['eng', 'ja', 'unknown']
     langcls2idx = {'eng': 0, 'ja': 1, 'unknown': 2}
 
-    def __init__(self, model_path, detect_size=1024, device='cpu', half=False, nms_thresh=0.35, conf_thresh=0.4, det_rearrange_max_batches=4):
+    def __init__(self, model_path, detect_size=1024, device='cpu', half=False, nms_thresh=0.35, conf_thresh=0.20, det_rearrange_max_batches=4, text_thresh=0.25, link_thresh=0.20, low_text=0.15, min_area=16):
         super(TextDetector, self).__init__()
 
         self.net: Union[TextDetBase, TextDetBaseDNN] = None
@@ -265,7 +265,11 @@ class TextDetector:
         self.half = half
         self.conf_thresh = conf_thresh
         self.nms_thresh = nms_thresh
-        self.seg_rep = SegDetectorRepresenter(thresh=0.3)
+        self.text_thresh = text_thresh
+        self.link_thresh = link_thresh
+        self.low_text = low_text
+        self.min_area = min_area
+        self.seg_rep = SegDetectorRepresenter(thresh=link_thresh, box_thresh=text_thresh)
 
         self.backend = 'torch'
         self.load_model(model_path)
@@ -316,6 +320,11 @@ class TextDetector:
         
         detect_size = self.detect_size if not self.backend == 'opencv' else 1024
         im_h, im_w = img.shape[:2]
+        max_dim = max(im_h, im_w)
+        if max_dim >= 1440 and self.backend != 'opencv':
+            # 2K High-DPI optimization: maintain detect_size = 1536 without aspect-ratio downscaling
+            detect_size = max(detect_size, 1536)
+
         lines_map, mask = det_rearrange_forward(img, self.det_batch_forward_ctd, detect_size, self.det_rearrange_max_batches, self.device)
         blks = []
         resize_ratio = [1, 1]
@@ -333,11 +342,26 @@ class TextDetector:
             mask = mask[..., :mask.shape[0]-dh, :mask.shape[1]-dw]
             lines_map = lines_map[..., :lines_map.shape[2]-dh, :lines_map.shape[3]-dw]
 
-        mask = postprocess_mask(mask)
+        mask = postprocess_mask(mask, thresh=getattr(self, 'low_text', 0.15))
         lines, scores = self.seg_rep(None, lines_map, height=im_h, width=im_w)
-        box_thresh = 0.6
+        box_thresh = getattr(self, 'text_thresh', 0.25)
+        min_area = getattr(self, 'min_area', 16)
         idx = np.where(scores[0] > box_thresh)
         lines, scores = lines[0][idx], scores[0][idx]
+
+        # Filter lines by min_area (>= 16px) to eliminate noise artifacts while retaining small text
+        if len(lines) > 0 and min_area > 0:
+            valid_idx = []
+            for i, line in enumerate(lines):
+                lx1, lx2 = line[:, 0].min(), line[:, 0].max()
+                ly1, ly2 = line[:, 1].min(), line[:, 1].max()
+                box_area = (lx2 - lx1) * (ly2 - ly1)
+                poly_area = cv2.contourArea(line.astype(np.float32))
+                if max(box_area, poly_area) >= min_area:
+                    valid_idx.append(i)
+            if len(valid_idx) < len(lines):
+                lines = lines[valid_idx]
+                scores = scores[valid_idx]
 
         # map output to input img
         mask = cv2.resize(mask, (im_w, im_h), interpolation=cv2.INTER_LINEAR)

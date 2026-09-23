@@ -1,398 +1,286 @@
+import cv2
 import numpy as np
-from typing import List
 import os
-import logging
+import os.path as osp
+import subprocess
+import sys
+from typing import List, Optional
 
-LOGGER = logging.getLogger("BallonTranslator")
+from .base import OCRBase, register_OCR, TextBlock, LOGGER
+
+# Try RapidOCR (Official PaddleOCR 3.0 ONNX Engine) first, then native paddleocr
+HAS_RAPID_PADDLE = False
+HAS_NATIVE_PADDLE = False
 
 try:
-    from paddleocr import PaddleOCR
-
-    PADDLE_OCR_AVAILABLE = True
+    from rapidocr_onnxruntime import RapidOCR
+    HAS_RAPID_PADDLE = True
 except ImportError:
-    PADDLE_OCR_AVAILABLE = False
-    LOGGER.debug(
-        "PaddleOCR is not installed, so the module will not be initialized. \nCheck this issue https://github.com/dmMaze/BallonsTranslator/issues/835#issuecomment-2772940806"
-    )
+    HAS_RAPID_PADDLE = False
 
-import cv2
-import re
+try:
+    from paddleocr import PaddleOCR as PaddleOCRInstance
+    HAS_NATIVE_PADDLE = True
+except ImportError:
+    HAS_NATIVE_PADDLE = False
 
-from .base import OCRBase, register_OCR, DEFAULT_DEVICE, DEVICE_SELECTOR, TextBlock
 
-# Specify the path for storing PaddleOCR models
-PADDLE_OCR_PATH = os.path.join("data", "models", "paddle-ocr")
-# Set an environment variable to store PaddleOCR models
-os.environ["PPOCR_HOME"] = PADDLE_OCR_PATH
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+def _auto_install_paddleocr():
+    python = sys.executable
+    LOGGER.info("[PaddleOCR] paddleocr / rapidocr not found. Auto-installing from PyPI/GitHub...")
+    try:
+        subprocess.check_call(
+            [python, "-m", "pip", "install", "rapidocr_onnxruntime", "paddleocr"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        LOGGER.info("[PaddleOCR] Auto-install succeeded.")
+        global HAS_RAPID_PADDLE, HAS_NATIVE_PADDLE
+        try:
+            from rapidocr_onnxruntime import RapidOCR
+            HAS_RAPID_PADDLE = True
+        except ImportError:
+            pass
+        try:
+            from paddleocr import PaddleOCR as PaddleOCRInstance
+            HAS_NATIVE_PADDLE = True
+        except ImportError:
+            pass
+        return HAS_RAPID_PADDLE or HAS_NATIVE_PADDLE
+    except Exception as e:
+        LOGGER.error(f"[PaddleOCR] Auto-install failed: {e}")
+        return False
 
-if PADDLE_OCR_AVAILABLE:
 
-    @register_OCR("paddle_ocr")
-    class PaddleOCRModule(OCRBase):
-        # Mapping language names to PaddleOCR codes
-        lang_map = {
-            "Chinese & English": "ch",
-            "English": "en",
-            "French": "fr",
-            "German": "german",
-            "Japanese": "japan",
-            "Korean": "korean",
-            "Chinese Traditional": "chinese_cht",
-            "Italian": "it",
-            "Spanish": "es",
-            "Portuguese": "pt",
-            "Russian": "ru",
-            "Ukrainian": "uk",
-            "Belarusian": "be",
-            "Telugu": "te",
-            "Saudi Arabia": "sa",
-            "Tamil": "ta",
-            "Afrikaans": "af",
-            "Azerbaijani": "az",
-            "Bosnian": "bs",
-            "Czech": "cs",
-            "Welsh": "cy",
-            "Danish": "da",
-            "Dutch": "nl",
-            "Norwegian": "no",
-            "Polish": "pl",
-            "Romanian": "ro",
-            "Slovak": "sk",
-            "Slovenian": "sl",
-            "Albanian": "sq",
-            "Swedish": "sv",
-            "Swahili": "sw",
-            "Tagalog": "tl",
-            "Turkish": "tr",
-            "Uzbek": "uz",
-            "Vietnamese": "vi",
-            "Mongolian": "mn",
-            "Arabic": "ar",
-            "Hindi": "hi",
-            "Uyghur": "ug",
-            "Persian": "fa",
-            "Urdu": "ur",
-            "Serbian (Latin)": "rs_latin",
-            "Occitan": "oc",
-            "Marathi": "mr",
-            "Nepali": "ne",
-            "Serbian (Cyrillic)": "rs_cyrillic",
-            "Bulgarian": "bg",
-            "Estonian": "et",
-            "Irish": "ga",
-            "Croatian": "hr",
-            "Hungarian": "hu",
-            "Indonesian": "id",
-            "Icelandic": "is",
-            "Kurdish": "ku",
-            "Lithuanian": "lt",
-            "Latvian": "lv",
-            "Maori": "mi",
-            "Malay": "ms",
-            "Maltese": "mt",
-            "Adyghe": "ady",
-            "Kabardian": "kbd",
-            "Avar": "ava",
-            "Dargwa": "dar",
-            "Ingush": "inh",
-            "Lak": "lbe",
-            "Lezghian": "lez",
-            "Tabassaran": "tab",
-            "Bihari": "bh",
-            "Maithili": "mai",
-            "Angika": "ang",
-            "Bhojpuri": "bho",
-            "Magahi": "mah",
-            "Nagpur": "sck",
-            "Newari": "new",
-            "Goan Konkani": "gom",
-        }
+def _preprocess_crop_for_paddle(crop: np.ndarray) -> np.ndarray:
+    """Enhance manga speech bubble text contrast and add padding for PaddleOCR recognition."""
+    if crop is None or crop.size == 0:
+        return crop
+    
+    # 1. Convert to RGB if needed
+    if crop.ndim == 3 and crop.shape[-1] == 4:
+        crop = cv2.cvtColor(crop, cv2.COLOR_RGBA2RGB)
+    elif crop.ndim == 2:
+        crop = cv2.cvtColor(crop, cv2.COLOR_GRAY2RGB)
 
-        params = {
-            "language": {
-                "type": "selector",
-                "options": list(lang_map.keys()),
-                "value": "English",  # Default language
-                "description": "Select the language for OCR",
-            },
-            "device": DEVICE_SELECTOR(),
-            "use_angle_cls": {
-                "type": "checkbox",
-                "value": False,
-                "description": "Enable angle classification for rotated text",
-            },
-            "ocr_version": {
-                "type": "selector",
-                "options": ["PP-OCRv4", "PP-OCRv3", "PP-OCRv2", "PP-OCR"],
-                "value": "PP-OCRv4",
-                "description": "Select the OCR model version",
-            },
-            "enable_mkldnn": {
-                "type": "checkbox",
-                "value": False,
-                "description": "Enable MKL-DNN for CPU acceleration",
-            },
-            "det_limit_side_len": {
-                "value": 960,
-                "description": "Maximum side length for text detection",
-            },
-            "rec_batch_num": {
-                "value": 6,
-                "description": "Batch size for text recognition",
-            },
-            "drop_score": {
-                "value": 0.5,
-                "description": "Confidence threshold for text recognition",
-            },
-            "text_case": {
-                "type": "selector",
-                "options": ["Uppercase", "Capitalize Sentences", "Lowercase"],
-                "value": "Capitalize Sentences",
-                "description": "Text case transformation",
-            },
-            "output_format": {
-                "type": "selector",
-                "options": ["Single Line", "As Recognized"],
-                "value": "As Recognized",
-                "description": "Text output format",
-            },
-        }
+    h, w = crop.shape[:2]
+    
+    # 2. Add border padding (10-15px) so letters at edges are recognized clearly
+    pad = 12
+    crop_padded = cv2.copyMakeBorder(crop, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=[255, 255, 255])
+    
+    # 3. Upscale if text region is very small (< 48px)
+    if min(h, w) < 48:
+        scale = max(2, int(48 / max(1, min(h, w))))
+        crop_padded = cv2.resize(crop_padded, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
 
-        device = DEFAULT_DEVICE
+    return crop_padded
 
-        def __init__(self, **params) -> None:
-            super().__init__(**params)
-            self.language = self.params["language"]["value"]
-            self.device = self.params["device"]["value"]
-            self.use_angle_cls = self.params["use_angle_cls"]["value"]
-            self.ocr_version = self.params["ocr_version"]["value"]
-            self.enable_mkldnn = self.params["enable_mkldnn"]["value"]
-            self.det_limit_side_len = self.params["det_limit_side_len"]["value"]
-            self.rec_batch_num = self.params["rec_batch_num"]["value"]
-            self.drop_score = self.params["drop_score"]["value"]
-            self.text_case = self.params["text_case"]["value"]
-            self.output_format = self.params["output_format"]["value"]
-            self.model = None
-            self._setup_logging()
-            self._load_model()
 
-        def _setup_logging(self):
-            if self.debug_mode:
-                logging.getLogger("ppocr").setLevel(logging.DEBUG)
-                logging.getLogger("paddleocr").setLevel(logging.DEBUG)
-                logging.getLogger("predict_system").setLevel(logging.DEBUG)
-            else:
-                logging.getLogger("ppocr").setLevel(logging.WARNING)
-                logging.getLogger("paddleocr").setLevel(logging.WARNING)
-                logging.getLogger("predict_system").setLevel(logging.WARNING)
+@register_OCR("paddleocr3")
+@register_OCR("paddleocr")
+@register_OCR("paddle_ocr")
+class PaddleOCREngine(OCRBase):
+    """
+    PaddleOCR 3.0 Engine for Comic/Manga Text Recognition.
+    Supports English, Japanese, Chinese, and Multilingual recognition.
+    Powered by PaddlePaddle official models (PP-OCRv4 / PP-OCR 3.0).
 
-        def _load_model(self):
-            lang_code = self.lang_map[self.language]
-            use_gpu = True if self.device == "cuda" else False
-            if self.debug_mode:
-                self.logger.info(
-                    f"Loading PaddleOCR model for language: {self.language} ({lang_code}), GPU: {use_gpu}"
-                )
-            self.model = PaddleOCR(
-                use_angle_cls=self.use_angle_cls,
-                lang=lang_code,
-                use_gpu=use_gpu,
-                ocr_version=self.ocr_version,
-                enable_mkldnn=self.enable_mkldnn,
-                det_limit_side_len=self.det_limit_side_len,
-                rec_batch_num=self.rec_batch_num,
-                drop_score=self.drop_score,
-                det_model_dir=os.path.join(
-                    PADDLE_OCR_PATH, lang_code, self.ocr_version, "det"
-                ),
-                rec_model_dir=os.path.join(
-                    PADDLE_OCR_PATH, lang_code, self.ocr_version, "rec"
-                ),
-                cls_model_dir=(
-                    os.path.join(PADDLE_OCR_PATH, lang_code, self.ocr_version, "cls")
-                    if self.use_angle_cls
-                    else None
-                ),
-            )
+    GitHub: https://github.com/PaddlePaddle/PaddleOCR
+    """
+    params = {
+        "language": {
+            "type": "selector",
+            "options": ["en", "japan", "ch", "korean", "chinese_cht"],
+            "value": "en",
+            "description": "Language for OCR recognition.",
+        },
+        "use_angle_cls": {
+            "type": "checkbox",
+            "value": True,
+            "description": "Use text orientation classification for vertical/rotated text.",
+        },
+        "drop_score": {
+            "type": "line_editor",
+            "value": 0.4,
+            "description": "Minimum confidence score for recognition results (0.1-0.9).",
+        },
+        "fallback_llm": {
+            "type": "checkbox",
+            "value": False,
+            "description": "Fallback to Gemini Vision OCR when local text quality is low or suspicious.",
+        },
+    }
 
-        def ocr_img(self, img: np.ndarray) -> str:
-            if self.debug_mode:
-                self.logger.debug(f"Starting OCR for image size: {img.shape}")
-            result = self.model.ocr(img, det=True, rec=True, cls=self.use_angle_cls)
-            if self.debug_mode:
-                self.logger.debug(f"OCR recognition result: {result}")
-            text = self._process_result(result)
-            return text
+    download_file_on_load = False
+    download_file_list = []
 
-        def _ocr_blk_list(
-            self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs
-        ):
-            im_h, im_w = img.shape[:2]
-            for blk in blk_list:
-                x1, y1, x2, y2 = blk.xyxy
-                if 0 <= x1 < x2 <= im_w and 0 <= y1 < y2 <= im_h:
-                    cropped_img = img[y1:y2, x1:x2]
-                    try:
-                        result = self.model.ocr(
-                            cropped_img, det=True, rec=True, cls=self.use_angle_cls
-                        )
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
+        self._rapid_instance = None
+        self._native_instance = None
+        self._llm_ocr_instance = None
+        self.lang = self.params.get("language", {}).get("value", "en")
+        self.use_angle_cls = self.params.get("use_angle_cls", {}).get("value", True)
+        self.drop_score = float(self.params.get("drop_score", {}).get("value", 0.4))
+        self.fallback_llm = self.params.get("fallback_llm", {}).get("value", False)
 
-                        # Extract raw text from OCR result
-                        raw_texts = []
-                        if (
-                            isinstance(result, list)
-                            and len(result) > 0
-                            and isinstance(result[0], list)
-                        ):
-                            for line in result[0]:
-                                if (
-                                    isinstance(line, list)
-                                    and len(line) > 1
-                                    and isinstance(line[1], (list, tuple))
-                                    and len(line[1]) > 0
-                                ):
-                                    raw_texts.append(line[1][0])
-                        raw_text = " ".join(raw_texts)
+    def _load_model(self):
+        global HAS_RAPID_PADDLE, HAS_NATIVE_PADDLE
+        if not HAS_RAPID_PADDLE and not HAS_NATIVE_PADDLE:
+            if not _auto_install_paddleocr():
+                LOGGER.error("[PaddleOCR] Neither rapidocr_onnxruntime nor paddleocr is available.")
+                return
 
-                        if self.debug_mode:
-                            self.logger.debug(
-                                f"Raw OCR text from block ({x1}, {y1}, {x2}, {y2}): {raw_text}"
-                            )
-
-                        # Process the OCR result
-                        text = self._process_result(result)
-
-                        if self.debug_mode:
-                            self.logger.debug(
-                                f"Processed text from block ({x1}, {y1}, {x2}, {y2}): {text}"
-                            )
-
-                        blk.text = text if text else ""
-
-                    except Exception as e:
-                        if self.debug_mode:
-                            self.logger.error(f"Error recognizing block: {str(e)}")
-                        blk.text = ""
-                else:
-                    if self.debug_mode:
-                        self.logger.warning(
-                            "Invalid text block coordinates for target image"
-                        )
-                    blk.text = ""
-
-        def _process_result(self, result):
+        # 1. Prefer RapidOCR (PaddleOCR 3.0 ONNX Engine)
+        if HAS_RAPID_PADDLE:
             try:
-                if not result or result[0] is None:
-                    return ""
-
-                if (
-                    isinstance(result, list)
-                    and len(result) > 0
-                    and isinstance(result[0], list)
-                ):
-                    result = result[0]
-
-                raw_texts = []
-                for line in result:
-                    if (
-                        isinstance(line, list)
-                        and len(line) > 1
-                        and isinstance(line[1], (list, tuple))
-                        and len(line[1]) > 0
-                    ):
-                        text = line[1][0]
-                        raw_texts.append(text)
-
-                # Depending on the output_format, we concatenate the lines
-                if self.output_format == "Single Line":
-                    joined_text = " ".join(raw_texts)
-                    # Text cleaning
-                    joined_text = re.sub(r"-(?!\w)", "", joined_text)
-                    joined_text = re.sub(r"\s+", " ", joined_text)
-                elif self.output_format == "As Recognized":
-                    joined_text = " ".join(
-                        raw_texts
-                    )  # Combine with spaces to create a single text
-                    # Clean up text, preserve line breaks
-                    joined_text = re.sub(r"-(?!\w)", "", joined_text)
-                    joined_text = re.sub(r"\s+", " ", joined_text)
-                else:
-                    joined_text = " ".join(raw_texts)
-                    joined_text = re.sub(r"-(?!\w)", "", joined_text)
-                    joined_text = re.sub(r"\s+", " ", joined_text)
-
-                # Apply case conversion to all text
-                processed_text = self._apply_text_case(joined_text)
-                processed_text = self._apply_punctuation_and_spacing(processed_text)
-
-                if self.debug_mode:
-                    self.logger.debug(f"Final processed text: {processed_text}")
-
-                return processed_text
+                from rapidocr_onnxruntime import RapidOCR
+                self._rapid_instance = RapidOCR()
+                LOGGER.info("[PaddleOCR] Initialized PaddleOCR 3.0 (RapidOCR ONNX Engine) successfully.")
+                return
             except Exception as e:
-                if self.debug_mode:
-                    self.logger.error(f"Error processing OCR result: {str(e)}")
-                return ""
+                LOGGER.warning(f"[PaddleOCR] RapidOCR init failed: {e}. Trying native PaddleOCR...")
 
-        def _apply_text_case(self, text: str) -> str:
-            if self.text_case == "Uppercase":
-                return text.upper()
-            elif self.text_case == "Capitalize Sentences":
-                return self._capitalize_sentences(text)
-            elif self.text_case == "Lowercase":
-                return text.lower()
+        # 2. Fallback to native PaddleOCR
+        if HAS_NATIVE_PADDLE:
+            try:
+                from paddleocr import PaddleOCR as PaddleOCRInstance
+                self._native_instance = PaddleOCRInstance(
+                    lang=self.lang,
+                    use_angle_cls=self.use_angle_cls,
+                    show_log=False,
+                )
+                LOGGER.info(f"[PaddleOCR] Initialized native PaddleOCR 3.0 (lang={self.lang}) successfully.")
+            except Exception as e:
+                LOGGER.error(f"[PaddleOCR] Native PaddleOCR init failed: {e}")
+
+    def _recognize_single_crop(self, crop: np.ndarray) -> str:
+        """Run OCR on a single preprocessed crop image."""
+        if crop is None or crop.size == 0:
+            return ""
+
+        # RapidOCR Path (PaddleOCR ONNX)
+        if self._rapid_instance is not None:
+            try:
+                result, elapse = self._rapid_instance(crop)
+                if result:
+                    lines = []
+                    for item in result:
+                        if len(item) >= 3:
+                            box, text, score = item[0], item[1], float(item[2])
+                            if score >= self.drop_score and text and text.strip():
+                                lines.append(text.strip())
+                    if lines:
+                        return " ".join(lines)
+            except Exception as e:
+                LOGGER.warning(f"[PaddleOCR] RapidOCR recognition warning: {e}")
+
+        # Native PaddleOCR Path
+        if self._native_instance is not None:
+            try:
+                results = self._native_instance.ocr(crop, det=False, cls=self.use_angle_cls)
+                if results and results[0]:
+                    lines = []
+                    for line in results[0]:
+                        if len(line) >= 2:
+                            text, confidence = line[0] if isinstance(line[0], str) else line[1]
+                            conf_val = float(confidence) if not isinstance(text, float) else 1.0
+                            if conf_val >= self.drop_score and text and text.strip():
+                                lines.append(text.strip())
+                    if lines:
+                        return " ".join(lines)
+            except Exception as e:
+                LOGGER.warning(f"[PaddleOCR] Native PaddleOCR recognition warning: {e}")
+
+        return ""
+
+    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs) -> None:
+        if self._rapid_instance is None and self._native_instance is None:
+            self._load_model()
+        if self._rapid_instance is None and self._native_instance is None:
+            LOGGER.error("[PaddleOCR] Engine not available, skipping OCR.")
+            return
+
+        from utils.ocr_validator import generate_multiview_crops, score_ocr_quality, is_high_stylization_crop
+
+        fallback_blks: List[TextBlock] = []
+        fallback_reasons: dict = {}
+
+        for i, blk in enumerate(blk_list):
+            x1, y1, x2, y2 = blk.xyxy
+            crop = img[max(0, y1):min(img.shape[0], y2), max(0, x1):min(img.shape[1], x2)]
+            if crop.size == 0:
+                blk.text = [""]
+                continue
+
+            # Check for heavy brush lettering / distressed SFX
+            is_stylized, reason_stylized = is_high_stylization_crop(crop)
+            if is_stylized and self.fallback_llm:
+                fallback_blks.append(blk)
+                fallback_reasons[id(blk)] = reason_stylized
+                LOGGER.info(f"[PaddleOCR] Block #{i+1}: Stylized lettering detected ({reason_stylized}) -> Queueing Gemini Vision")
+                continue
+
+            views = generate_multiview_crops(crop)
+            best_text = ""
+            best_score = -1.0
+
+            for vname, vcrop in views:
+                t = self._recognize_single_crop(vcrop)
+                if t:
+                    score, is_susp, r = score_ocr_quality(t, crop, lang=self.lang)
+                    if score > best_score:
+                        best_score = score
+                        best_text = t
+                    if not is_susp and score >= 0.85:
+                        break
+
+            score, is_suspicious, reason = score_ocr_quality(best_text, crop, lang=self.lang)
+
+            if not is_suspicious and best_text:
+                blk.text = [best_text]
+                LOGGER.info(f"[PaddleOCR 3.0] Block #{i+1}: Validated ({score:.2f}) -> \"{best_text}\"")
             else:
-                return text  # No change if the mode is not recognized
-
-        def _capitalize_sentences(self, text: str) -> str:
-            def process_sentence(sentence):
-                words = sentence.split()
-                if not words:
-                    return ""
-                if len(words) == 1:
-                    return words[0].capitalize()
+                if self.fallback_llm:
+                    fallback_blks.append(blk)
+                    fallback_reasons[id(blk)] = reason
+                    LOGGER.info(f"[PaddleOCR] Block #{i+1}: Suspicious text ({reason}) -> Queueing Gemini Vision Fallback")
                 else:
-                    return " ".join(
-                        [words[0].capitalize()] + [word.lower() for word in words[1:]]
+                    blk.text = [best_text] if best_text else [""]
+
+        # Gemini Vision Fallback execution
+        if self.fallback_llm and fallback_blks:
+            LOGGER.info(f"[PaddleOCR] Triggering Gemini Vision Fallback for {len(fallback_blks)} text blocks.")
+            try:
+                from .ocr_llm_api import LLM_OCR
+                if self._llm_ocr_instance is None:
+                    ocr_lang = "English" if self.lang.startswith("en") else ("Japanese" if "ja" in self.lang else "English")
+                    self._llm_ocr_instance = LLM_OCR(
+                        provider="Google",
+                        model="gemini-2.5-flash-lite",
+                        language=ocr_lang
                     )
+                orig_texts = {id(blk): blk.get_text() for blk in fallback_blks}
+                self._llm_ocr_instance.run_ocr(img, fallback_blks)
+                for blk in fallback_blks:
+                    res_text = blk.get_text()
+                    if res_text.startswith("[ERROR:") and orig_texts.get(id(blk)):
+                        blk.text = [orig_texts[id(blk)]]
+                    else:
+                        LOGGER.info(f"[Gemini Vision OCR] Block: Successfully transcribed -> \"{res_text}\"")
+            except Exception as e:
+                LOGGER.error(f"[PaddleOCR] Gemini Vision Fallback error: {e}")
 
-            # We divide into sentences only by punctuation marks
-            sentences = re.split(r"(?<=[.!?…])\s+", text)
-            return " ".join(process_sentence(sentence) for sentence in sentences)
+    def ocr_img(self, img: np.ndarray) -> str:
+        if self._rapid_instance is None and self._native_instance is None:
+            self._load_model()
+        if self._rapid_instance is None and self._native_instance is None:
+            return ""
 
-        def _apply_punctuation_and_spacing(self, text: str) -> str:
-            text = re.sub(r"\s+([,.!?…])", r"\1", text)
-            text = re.sub(r"([,.!?…])(?!\s)(?![,.!?…])", r"\1 ", text)
-            text = re.sub(r"([,.!?…])\s+([,.!?…])", r"\1\2", text)
-            return text.strip()
-
-        def updateParam(self, param_key: str, param_content):
-            super().updateParam(param_key, param_content)
-            if param_key in [
-                "language",
-                "device",
-                "use_angle_cls",
-                "ocr_version",
-                "enable_mkldnn",
-                "det_limit_side_len",
-                "rec_batch_num",
-                "drop_score",
-            ]:
-                self.language = self.params["language"]["value"]
-                self.device = self.params["device"]["value"]
-                self.use_angle_cls = self.params["use_angle_cls"]["value"]
-                self.ocr_version = self.params["ocr_version"]["value"]
-                self.enable_mkldnn = self.params["enable_mkldnn"]["value"]
-                self.det_limit_side_len = self.params["det_limit_side_len"]["value"]
-                self.rec_batch_num = self.params["rec_batch_num"]["value"]
-                self.drop_score = self.params["drop_score"]["value"]
-                self._load_model()
-            elif param_key == "text_case":
-                self.text_case = self.params["text_case"]["value"]
-            elif param_key == "output_format":
-                self.output_format = self.params["output_format"]["value"]
-
-else:
-    # If PaddleOCR is not installed, you can define a stub or alternative module
-    logging.info("PaddleOCR module will not be loaded as the library is not installed.")
+        from utils.ocr_validator import generate_multiview_crops
+        views = generate_multiview_crops(img)
+        for _, vcrop in views:
+            txt = self._recognize_single_crop(vcrop)
+            if txt:
+                return txt
+        return ""

@@ -376,7 +376,11 @@ def get_block_mask(xywh: List, mask_array: np.ndarray, angle: int):
     if angle != 0:
         cx, cy = x + int(round(w / 2)), y + int(round(h / 2))
         poly = xywh2xyxypoly(np.array([[x, y, w, h]]))
+        if poly.size == 0 or poly[..., ::2].size == 0 or poly[..., 1::2].size == 0:
+            return None, None
         poly = rotate_polygons([cx, cy], poly, -angle)
+        if poly.size == 0 or poly[..., ::2].size == 0 or poly[..., 1::2].size == 0:
+            return None, None
         
         x1, x2 = np.min(poly[..., ::2]), np.max(poly[..., ::2])
         y1, y2 = np.min(poly[..., 1::2]), np.max(poly[..., 1::2])

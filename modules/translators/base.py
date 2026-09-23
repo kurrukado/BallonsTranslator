@@ -180,7 +180,7 @@ class BaseTranslator(BaseModule):
         text_list = text.split(breaker)
         return [text.lstrip().rstrip() for text in text_list]
 
-    def translate_textblk_lst(self, textblk_lst: List[TextBlock]):
+    def translate_textblk_lst(self, textblk_lst: List[TextBlock], page_context: Optional[dict] = None):
         '''
         only textblks with non-empty source text would be passed to translator
         '''

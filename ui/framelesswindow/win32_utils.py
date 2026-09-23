@@ -407,12 +407,17 @@ class WindowsMoveResize:
             else:
                 window.showMaximized()
         else:
-            if window.isMaximized():
-                win32gui.PostMessage(int(window.winId()), win32con.WM_SYSCOMMAND, win32con.SC_RESTORE, 0)
-            else:
-                win32gui.PostMessage(int(window.winId()), win32con.WM_SYSCOMMAND, win32con.SC_MAXIMIZE, 0)
-
-        releaseMouseLeftButton(window.winId())
+            try:
+                if window.isMaximized():
+                    win32gui.PostMessage(int(window.winId()), win32con.WM_SYSCOMMAND, win32con.SC_RESTORE, 0)
+                else:
+                    win32gui.PostMessage(int(window.winId()), win32con.WM_SYSCOMMAND, win32con.SC_MAXIMIZE, 0)
+                releaseMouseLeftButton(window.winId())
+            except Exception:
+                if window.isMaximized():
+                    window.showNormal()
+                else:
+                    window.showMaximized()
 
 
 class WindowsScreenCaptureFilter(QObject):

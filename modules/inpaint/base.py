@@ -3,16 +3,62 @@ import cv2
 from typing import Dict, List
 from collections import OrderedDict
 import sys
+import os
+import os.path as osp
 
 from utils.registry import Registry
-from utils.textblock_mask import extract_ballon_mask
+from utils.textblock_mask import extract_ballon_mask, _is_gradient_bg
 from utils.imgproc_utils import enlarge_window, smart_resize
+from utils.logger import logger as LOGGER
 
 from ..base import BaseModule, DEFAULT_DEVICE, soft_empty_cache, DEVICE_SELECTOR, GPUINTENSIVE_SET, TORCH_DTYPE_MAP, BF16_SUPPORTED
 from ..textdetector import TextBlock
 
 INPAINTERS = Registry('inpainters')
 register_inpainter = INPAINTERS.register_module
+
+
+def _laplacian_pyramid_blend(img_a: np.ndarray, img_b: np.ndarray, mask: np.ndarray, levels: int = 4) -> np.ndarray:
+    """Blend img_a (inpainted) into img_b (original) at mask boundary via Laplacian pyramid.
+    Eliminates hard rectangular seams on gradient/screentone backgrounds.
+    """
+    # Soft mask: blur boundary for feathering, float [0,1]
+    mask_f = cv2.GaussianBlur(mask.astype(np.float32) / 255.0, (31, 31), 0)
+
+    def build_laplacian(img):
+        gp = [img.astype(np.float32)]
+        for _ in range(levels - 1):
+            gp.append(cv2.pyrDown(gp[-1]))
+        lp = []
+        for i in range(levels - 1):
+            up = cv2.pyrUp(gp[i + 1], dstsize=(gp[i].shape[1], gp[i].shape[0]))
+            lp.append(gp[i] - up)
+        lp.append(gp[-1].astype(np.float32))
+        # lp[0] is finest, lp[-1] is coarsest
+        return lp
+
+    def build_gauss_pyramid(img, n):
+        gp = [img]
+        for _ in range(n - 1):
+            gp.append(cv2.pyrDown(gp[-1]))
+        # gp[0] is finest, gp[-1] is coarsest — same ordering as Laplacian pyramid
+        return gp
+
+    lp_a = build_laplacian(img_a)
+    lp_b = build_laplacian(img_b)
+    gp_mask = build_gauss_pyramid(mask_f, levels)
+
+    # Blend each level (both pyramids have same ordering: finest→coarsest)
+    blended_lp = []
+    for la, lb, m in zip(lp_a, lp_b, gp_mask):
+        m3 = m[:, :, None] if la.ndim == 3 else m
+        blended_lp.append(la * m3 + lb * (1.0 - m3))
+
+    # Reconstruct from coarsest to finest
+    result = blended_lp[-1]
+    for layer in reversed(blended_lp[:-1]):
+        result = cv2.pyrUp(result, dstsize=(layer.shape[1], layer.shape[0])) + layer
+    return np.clip(result, 0, 255).astype(np.uint8)
 
 
 def inpaint_handle_alpha_channel(original_alpha, mask):
@@ -62,26 +108,32 @@ class InpainterBase(BaseModule):
         try:
             return self._inpaint(img, mask, textblock_list)
         except Exception as e:
-            if DEFAULT_DEVICE == 'cuda' and isinstance(e, torch.cuda.OutOfMemoryError):
+            is_oom = (
+                isinstance(e, torch.cuda.OutOfMemoryError)
+                or "out of memory" in str(e).lower()
+                or "cuda error: out of memory" in str(e).lower()
+            )
+            if is_oom:
                 soft_empty_cache()
                 try:
                     return self._inpaint(img, mask, textblock_list)
                 except Exception as ee:
-                    if isinstance(ee, torch.cuda.OutOfMemoryError):
-                        self.logger.warning(f'CUDA out of memory while calling {self.name}, fall back to cpu...\n\
-                                            if running into it frequently, consider lowering the inpaint_size')
+                    if isinstance(ee, torch.cuda.OutOfMemoryError) or "out of memory" in str(ee).lower():
+                        self.logger.warning(f'CUDA out of memory while calling {self.name}, fall back to cpu...\n'
+                                            f'if running into it frequently, consider lowering the inpaint_size')
                         self.moveToDevice('cpu')
                         inpainted = self._inpaint(img, mask, textblock_list)
-                        precision = None
-                        if hasattr(self, 'precision'):
-                            precision = self.precision
-                        self.moveToDevice('cuda', precision)
+                        precision = getattr(self, 'precision', None)
+                        self.moveToDevice('cuda' if torch.cuda.is_available() else 'cpu', precision)
 
                         return inpainted
-            else:
-                raise e
+            raise e
 
     def inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None, check_need_inpaint: bool = False) -> np.ndarray:
+        if img is None or img.size == 0 or img.shape[0] == 0 or img.shape[1] == 0:
+            return img
+        if mask is None or mask.size == 0 or mask.shape[0] == 0 or mask.shape[1] == 0:
+            return img
         
         if not self.all_model_loaded():
             self.load_model()
@@ -95,23 +147,146 @@ class InpainterBase(BaseModule):
             img_rgb = img
         
         if not self.inpaint_by_block or textblock_list is None:
-            if check_need_inpaint:
-                ballon_msk, non_text_msk = extract_ballon_mask(img_rgb, mask)
-                if ballon_msk is not None:
-                    non_text_region = np.where(non_text_msk > 0)
-                    non_text_px = img_rgb[non_text_region]
-                    average_bg_color = np.median(non_text_px, axis=0)
-                    std_rgb = np.std(non_text_px - average_bg_color, axis=0)
-                    std_max = np.max(std_rgb)
-                    inpaint_thresh = 7 if np.std(std_rgb) > 1 else 10
-                    if std_max < inpaint_thresh:
-                        result_rgb = img_rgb.copy()
-                        result_rgb[np.where(ballon_msk > 0)] = average_bg_color
-                        # Recombine with alpha if original was RGBA
-                        if original_alpha is not None:
-                            return np.concatenate([result_rgb, original_alpha], axis=2)
-                        return result_rgb
+            # Full-page neural inpainting
             result_rgb = self.memory_safe_inpaint(img_rgb, mask, textblock_list)
+            if result_rgb is None or result_rgb.size == 0 or result_rgb.shape[:2] != img_rgb.shape[:2]:
+                raise RuntimeError(f"[{self.name}] Inpainting produced invalid or empty output tensor.")
+            
+            # Secondary Pass for Un-inpainted High-Frequency Zones (Optimized Local ROI + Screentone Baseline)
+            if textblock_list and len(textblock_list) > 0:
+                im_h, im_w = result_rgb.shape[:2]
+                residual_blocks = []
+                for blk in textblock_list:
+                    bx1, by1, bx2, by2 = [int(v) for v in blk.xyxy]
+                    bx1, by1 = max(0, bx1), max(0, by1)
+                    bx2, by2 = min(im_w, bx2), min(im_h, by2)
+                    if bx2 <= bx1 or by2 <= by1:
+                        continue
+                    
+                    box_mask = mask[by1:by2, bx1:bx2]
+                    if np.count_nonzero(box_mask > 0) == 0:
+                        continue
+                    
+                    box_crop = result_rgb[by1:by2, bx1:bx2]
+                    gray_crop = cv2.cvtColor(box_crop, cv2.COLOR_RGB2GRAY)
+                    
+                    # Screentone Baseline Subtraction:
+                    # Measure local background's baseline Laplacian variance on a 10px strip outside the mask perimeter
+                    sx1 = max(0, bx1 - 10)
+                    sy1 = max(0, by1 - 10)
+                    sx2 = min(im_w, bx2 + 10)
+                    sy2 = min(im_h, by2 + 10)
+                    
+                    strip_crop = result_rgb[sy1:sy2, sx1:sx2]
+                    strip_gray = cv2.cvtColor(strip_crop, cv2.COLOR_RGB2GRAY)
+                    strip_lap = cv2.Laplacian(strip_gray, cv2.CV_64F)
+                    strip_mask = mask[sy1:sy2, sx1:sx2]
+                    
+                    dilated_strip_m = cv2.dilate((strip_mask > 0).astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (21, 21)))
+                    outside_strip = (dilated_strip_m > 0) & (strip_mask == 0)
+                    bg_lap_var = float(np.var(strip_lap[outside_strip])) if np.count_nonzero(outside_strip) >= 15 else 0.0
+                    
+                    inner_m = (strip_mask > 0)
+                    inner_lap_var = float(np.var(strip_lap[inner_m])) if np.count_nonzero(inner_m) >= 10 else float(np.var(strip_lap))
+                    
+                    # Net Laplacian variance after subtracting background screentone baseline
+                    net_lap_var = max(0.0, inner_lap_var - bg_lap_var)
+                    
+                    # Measure edge density inside the inpainted mask region
+                    canny = cv2.Canny(gray_crop, 50, 150)
+                    masked_edges = canny[box_mask > 0]
+                    edge_ratio = float(np.count_nonzero(masked_edges > 0)) / max(1, len(masked_edges))
+                    
+                    is_balloon = getattr(blk, 'is_balloon', True)
+                    var_thresh = 120.0 if is_balloon else 300.0
+                    
+                    if net_lap_var > var_thresh and edge_ratio > 0.06:
+                        residual_blocks.append((blk, net_lap_var, edge_ratio))
+                
+                if residual_blocks:
+                    LOGGER.warning(
+                        f"[{self.name}] High-frequency residual text detected in {len(residual_blocks)} blocks "
+                        f"(Max Net Laplacian Var: {max(b[1] for b in residual_blocks):.1f}). Triggering optimized local ROI 2nd-pass..."
+                    )
+                    
+                    for blk, lvar, eratio in residual_blocks:
+                        bx1, by1, bx2, by2 = [int(v) for v in blk.xyxy]
+                        bw = bx2 - bx1
+                        bh = by2 - by1
+                        if bw <= 0 or bh <= 0:
+                            continue
+
+                        # Detect gradient background: 2D Sobel magnitude > 8.0 or non-balloon
+                        blk_gray = cv2.cvtColor(result_rgb[by1:by2, bx1:bx2], cv2.COLOR_RGB2GRAY)
+                        is_gradient_zone = _is_gradient_bg(blk_gray, mask=mask[by1:by2, bx1:bx2]) or not getattr(blk, 'is_balloon', True)
+                        
+                        # Crop strictly to affected bounding box expanded by 1.3x (or 2.2x vertical for gradients)
+                        pad_x = int(round(bw * 0.15)) + 16
+                        pad_y = int(round(bh * 0.15)) + 16
+                        if is_gradient_zone:
+                            # Minimum 2.2× vertical expansion so LaMa sees full gradient span
+                            pad_y = max(pad_y, int(round(bh * 0.60)) + 16)
+                        rx1 = max(0, bx1 - pad_x)
+                        ry1 = max(0, by1 - pad_y)
+                        rx2 = min(im_w, bx2 + pad_x)
+                        ry2 = min(im_h, by2 + pad_y)
+                        
+                        roi_h = ry2 - ry1
+                        roi_w = rx2 - rx1
+                        if roi_h <= 0 or roi_w <= 0:
+                            continue
+                        
+                        roi_img = result_rgb[ry1:ry2, rx1:rx2].copy()
+                        roi_orig = img_rgb[ry1:ry2, rx1:rx2].copy()
+                        roi_mask = np.zeros((roi_h, roi_w), dtype=np.uint8)
+                        
+                        # Expanded mask within local ROI
+                        ebx1 = max(0, int(round(bx1 - bw * 0.15)) - rx1)
+                        eby1 = max(0, int(round(by1 - bh * 0.15)) - ry1)
+                        ebx2 = min(roi_w, int(round(bx2 + bw * 0.15)) - rx1)
+                        eby2 = min(roi_h, int(round(by2 + bh * 0.15)) - ry1)
+                        
+                        roi_mask[eby1:eby2, ebx1:ebx2] = 255
+                        roi_mask = cv2.dilate(roi_mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)))
+                        
+                        # Execute local CUDA LaMa inference on cropped ROI
+                        roi_inpainted = self.memory_safe_inpaint(roi_img, roi_mask, None)
+                        if roi_inpainted is not None and roi_inpainted.shape == roi_img.shape:
+                            if is_gradient_zone:
+                                # Seamless Gradient Integration: Laplacian Pyramid Blending eliminates hard seam
+                                blended = _laplacian_pyramid_blend(roi_inpainted, roi_orig, roi_mask, levels=4)
+                                result_rgb[ry1:ry2, rx1:rx2] = blended
+                            else:
+                                roi_mask_3d = (roi_mask > 0)[:, :, None]
+                                result_rgb[ry1:ry2, rx1:rx2] = np.where(roi_mask_3d, roi_inpainted, result_rgb[ry1:ry2, rx1:rx2])
+                            mask[ry1:ry2, rx1:rx2] = np.maximum(mask[ry1:ry2, rx1:rx2], roi_mask)
+                            
+                    LOGGER.info(f"✓ [{self.name}] Optimized local ROI 2nd-pass completed on {len(residual_blocks)} residual zones.")
+
+            # Strict pixel preservation invariant: Pixels outside mask must remain 100% original
+            mask_3d = mask[:, :, None] if mask.ndim == 2 else mask
+            mask_bin = (mask_3d > 0)
+            result_rgb = np.where(mask_bin, result_rgb, img_rgb)
+
+            # Measure actual Unmasked Pixel MAE dynamically
+            unmasked_mask = (~mask_bin[:, :, 0]) if mask_bin.ndim == 3 else (~mask_bin)
+            if np.any(unmasked_mask):
+                unmasked_mae = float(np.mean(np.abs(result_rgb[unmasked_mask].astype(np.float32) - img_rgb[unmasked_mask].astype(np.float32))))
+            else:
+                unmasked_mae = 0.0
+            
+            # Measure screentone texture standard deviation
+            mask_bool = (mask > 0)
+            if np.any(mask_bool):
+                inpainted_std = float(np.std(result_rgb[mask_bool]))
+                surround_elem = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))
+                dilated_surround = cv2.dilate(mask.astype(np.uint8), surround_elem) > 0
+                surround_only = dilated_surround & (~mask_bool)
+                surround_std = float(np.std(img_rgb[surround_only])) if np.any(surround_only) else inpainted_std
+                LOGGER.info(f"[{self.name}] Inpainting Complete | Unmasked MAE: {unmasked_mae:.6f} | Texture Std Dev (Inpainted: {inpainted_std:.2f}, Background: {surround_std:.2f})")
+            else:
+                LOGGER.info(f"[{self.name}] Inpainting Complete | Unmasked MAE: {unmasked_mae:.6f} | No active mask pixels.")
+
             # Recombine with alpha if original was RGBA
             if original_alpha is not None:
                 result_alpha = inpaint_handle_alpha_channel(original_alpha, mask)
@@ -126,32 +301,32 @@ class InpainterBase(BaseModule):
             
             for blk in textblock_list:
                 xyxy = blk.xyxy
-                xyxy_e = enlarge_window(xyxy, im_w, im_h, ratio=1.7)
+                bw = xyxy[2] - xyxy[0]
+                bh = xyxy[3] - xyxy[1]
+                ratio = 1.7
+                if max(bw, bh) < 60:
+                    ratio = max(2.5, min(4.0, 150.0 / max(1, max(bw, bh))))
+                xyxy_e = enlarge_window(xyxy, im_w, im_h, ratio=ratio)
+                if xyxy_e[2] <= xyxy_e[0] or xyxy_e[3] <= xyxy_e[1]:
+                    continue
                 im = inpainted[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]]
                 msk = mask[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]]
-                need_inpaint = True
-                if self.check_need_inpaint or check_need_inpaint:
-                    ballon_msk, non_text_msk = extract_ballon_mask(im, msk)
-                    if ballon_msk is not None:
-                        non_text_region = np.where(non_text_msk > 0)
-                        non_text_px = im[non_text_region]
-                        average_bg_color = np.median(non_text_px, axis=0)
-                        std_rgb = np.std(non_text_px - average_bg_color, axis=0)
-                        std_max = np.max(std_rgb)
-                        inpaint_thresh = 7 if np.std(std_rgb) > 1 else 10
-                        if std_max < inpaint_thresh:
-                            need_inpaint = False
-                            im[np.where(ballon_msk > 0)] = average_bg_color
-                        # cv2.imshow('im', im)
-                        # cv2.imshow('ballon', ballon_msk)
-                        # cv2.imshow('non_text', non_text_msk)
-                        # cv2.waitKey(0)
+                if im.size == 0 or msk.size == 0 or im.shape[0] == 0 or im.shape[1] == 0:
+                    continue
                 
-                if need_inpaint:
-                    inpainted[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]] = self.memory_safe_inpaint(im, msk)
+                # Execute neural inpaint for every non-empty mask (NO flat color bypass)
+                if np.any(msk > 0):
+                    inpaint_crop = self.memory_safe_inpaint(im, msk)
+                    if inpaint_crop is not None and inpaint_crop.shape == im.shape:
+                        msk_3d = msk[:, :, None] if msk.ndim == 2 else msk
+                        inpainted[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]] = np.where(msk_3d > 0, inpaint_crop, im)
 
                 mask[xyxy[1]:xyxy[3], xyxy[0]:xyxy[2]] = 0
             
+            # Enforce 100% pixel preservation outside total mask
+            orig_mask_3d = original_mask[:, :, None] if original_mask.ndim == 2 else original_mask
+            inpainted = np.where(orig_mask_3d > 0, inpainted, img_rgb)
+
             # Recombine with alpha if original was RGBA
             if original_alpha is not None:
                 result_alpha = inpaint_handle_alpha_channel(original_alpha, original_mask)
@@ -333,14 +508,27 @@ from .lama import LamaFourier, load_lama_mpe
 @register_inpainter('lama_mpe')
 class LamaInpainterMPE(InpainterBase):
 
+    inpaint_by_block = False
+    check_need_inpaint = False
+
     params = {
         'inpaint_size': {
             'type': 'selector',
             'options': [
                 1024, 
-                2048
+                2048,
+                2560
             ], 
             'value': 2048
+        },
+        'inpaint_passes': {
+            'type': 'selector',
+            'options': [
+                1,
+                2,
+                3
+            ], 
+            'value': 2
         },
         'device': DEVICE_SELECTOR(not_supported=['privateuseone'])
     }
@@ -356,6 +544,7 @@ class LamaInpainterMPE(InpainterBase):
         super().__init__(**params)
         self.device = self.params['device']['value']
         self.inpaint_size = int(self.params['inpaint_size']['value'])
+        self.inpaint_passes = int(self.params.get('inpaint_passes', {}).get('value', 2))
         self.precision = 'fp32'
         self.model: LamaFourier = None
 
@@ -371,6 +560,10 @@ class LamaInpainterMPE(InpainterBase):
         mask_original = mask_original[:, :, None]
 
         new_shape = self.inpaint_size if max(img.shape[0: 2]) > self.inpaint_size else None
+        # Apply slight Gaussian blur (ksize=(5, 5), sigma=1.0) on binary mask to ensure seamless edge feathering
+        mask_feathered = cv2.GaussianBlur(mask.astype(np.float32), (5, 5), 1.0)
+        mask = np.clip(mask_feathered, 0, 255).astype(np.uint8)
+
         # high resolution input could produce cloudy artifacts
         img = resize_keepasp(img, new_shape, stride=64)
         mask = resize_keepasp(mask, new_shape, stride=64)
@@ -384,50 +577,66 @@ class LamaInpainterMPE(InpainterBase):
 
         img_torch = torch.from_numpy(img).permute(2, 0, 1).unsqueeze_(0).float() / 255.0
         mask_torch = torch.from_numpy(mask).unsqueeze_(0).unsqueeze_(0).float() / 255.0
-        mask_torch[mask_torch < 0.5] = 0
-        mask_torch[mask_torch >= 0.5] = 1
-        rel_pos, _, direct = self.model.load_masked_position_encoding(mask_torch[0][0].numpy())
-        rel_pos = torch.LongTensor(rel_pos).unsqueeze_(0)
-        direct = torch.LongTensor(direct).unsqueeze_(0)
+        mask_torch[mask_torch > 0.05] = 1.0
+        mask_torch[mask_torch <= 0.05] = 0.0
+        if self.model is not None and getattr(self.model, 'mpe', None) is not None:
+            rel_pos, _, direct = self.model.load_masked_position_encoding(mask_torch[0][0].numpy())
+            rel_pos = torch.LongTensor(rel_pos).unsqueeze_(0)
+            direct = torch.LongTensor(direct).unsqueeze_(0)
+            if self.device != 'cpu':
+                rel_pos = rel_pos.to(self.device)
+                direct = direct.to(self.device)
+        else:
+            rel_pos = None
+            direct = None
 
         if self.device != 'cpu':
             img_torch = img_torch.to(self.device)
             mask_torch = mask_torch.to(self.device)
-            rel_pos = rel_pos.to(self.device)
-            direct = direct.to(self.device)
         img_torch *= (1 - mask_torch)
         return img_torch, mask_torch, rel_pos, direct, img_original, mask_original, pad_bottom, pad_right
 
     @torch.no_grad()
     def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
+        if img is None or img.size == 0 or img.shape[0] == 0 or img.shape[1] == 0:
+            return img
+        if mask is None or mask.size == 0 or mask.shape[0] == 0 or mask.shape[1] == 0:
+            return img
 
         im_h, im_w = img.shape[:2]
-        img_torch, mask_torch, rel_pos, direct, img_original, mask_original, pad_bottom, pad_right = self.inpaint_preprocess(img, mask)
-        
-        precision = TORCH_DTYPE_MAP[self.precision]
-        if self.device in {'cuda'}:
-            try:
-                with torch.autocast(device_type=self.device, dtype=precision):
-                    img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
-            except Exception as e:
-                self.logger.error(e)
-                self.logger.error(f'{precision} inference is not supported for this device, use fp32 instead.')
-                img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
-        else:
-            img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
+        passes = max(1, getattr(self, 'inpaint_passes', 2))
+        curr_img = img
 
-        img_inpainted = (img_inpainted_torch.to(device='cpu', dtype=torch.float32).squeeze_(0).permute(1, 2, 0).numpy() * 255)
-        img_inpainted = (np.clip(np.round(img_inpainted), 0, 255)).astype(np.uint8)
-        if pad_bottom > 0:
-            img_inpainted = img_inpainted[:-pad_bottom]
-        if pad_right > 0:
-            img_inpainted = img_inpainted[:, :-pad_right]
-        new_shape = img_inpainted.shape[:2]
-        if new_shape[0] != im_h or new_shape[1] != im_w :
-            img_inpainted = cv2.resize(img_inpainted, (im_w, im_h), interpolation = cv2.INTER_LINEAR)
-        img_inpainted = img_inpainted * mask_original + img_original * (1 - mask_original)
-        
-        return img_inpainted
+        for p_idx in range(passes):
+            active_pixels = int(np.count_nonzero(mask > 0))
+            LOGGER.info(f"[{self.name}] Neural Inpaint Pass {p_idx + 1}/{passes} executing on {curr_img.shape[:2]} (Active Mask Pixels: {active_pixels})...")
+            img_torch, mask_torch, rel_pos, direct, img_original, mask_original, pad_bottom, pad_right = self.inpaint_preprocess(curr_img, mask)
+            
+            precision = TORCH_DTYPE_MAP[self.precision]
+            if self.device in {'cuda'}:
+                try:
+                    with torch.autocast(device_type=self.device, dtype=precision):
+                        img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
+                except Exception as e:
+                    self.logger.error(e)
+                    self.logger.error(f'{precision} inference is not supported for this device, use fp32 instead.')
+                    img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
+            else:
+                img_inpainted_torch = self.model(img_torch, mask_torch, rel_pos, direct)
+
+            img_inpainted = (img_inpainted_torch.to(device='cpu', dtype=torch.float32).squeeze_(0).permute(1, 2, 0).numpy() * 255)
+            img_inpainted = (np.clip(np.round(img_inpainted), 0, 255)).astype(np.uint8)
+            if pad_bottom > 0:
+                img_inpainted = img_inpainted[:-pad_bottom]
+            if pad_right > 0:
+                img_inpainted = img_inpainted[:, :-pad_right]
+            new_shape = img_inpainted.shape[:2]
+            if new_shape[0] != im_h or new_shape[1] != im_w:
+                img_inpainted = cv2.resize(img_inpainted, (im_w, im_h), interpolation=cv2.INTER_LINEAR)
+            curr_img = img_inpainted * mask_original + img_original * (1 - mask_original)
+            LOGGER.info(f"[{self.name}] Pass {p_idx + 1}/{passes} completed successfully.")
+
+        return curr_img
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
@@ -441,6 +650,9 @@ class LamaInpainterMPE(InpainterBase):
         elif param_key == 'inpaint_size':
             self.inpaint_size = int(self.params['inpaint_size']['value'])
 
+        elif param_key == 'inpaint_passes':
+            self.inpaint_passes = int(self.params['inpaint_passes']['value'])
+
         elif param_key == 'precision':
             precision = self.params['precision']['value']
             self.precision = precision
@@ -451,8 +663,13 @@ class LamaInpainterMPE(InpainterBase):
         if precision is not None:
             self.precision = precision
 
+@register_inpainter('inpaint-anything')
+@register_inpainter('big-lama')
 @register_inpainter('lama_large_512px')
 class LamaLarge(LamaInpainterMPE):
+
+    inpaint_by_block = False
+    check_need_inpaint = False
 
     params = {
         'inpaint_size': {
@@ -462,9 +679,19 @@ class LamaLarge(LamaInpainterMPE):
                 768,
                 1024,
                 1536, 
-                2048
+                2048,
+                2560
             ], 
-            'value': 1536,
+            'value': 2048,
+        },
+        'inpaint_passes': {
+            'type': 'selector',
+            'options': [
+                1,
+                2,
+                3
+            ], 
+            'value': 2,
         },
         'device': DEVICE_SELECTOR(not_supported=['privateuseone']),
         'precision': {
@@ -483,15 +710,18 @@ class LamaLarge(LamaInpainterMPE):
             'files': 'data/models/lama_large_512px.ckpt',
     }]
 
-    def __init__(self, **params) -> None:
-        super().__init__(**params)
-        self.precision = self.params['precision']['value']
-
     def _load_model(self):
         device = self.params['device']['value']
         precision = self.params['precision']['value']
+        ckpt_path = r'data/models/lama_large_512px.ckpt'
 
-        self.model = load_lama_mpe(r'data/models/lama_large_512px.ckpt', device='cpu', use_mpe=False, large_arch=True)
+        if not os.path.exists(ckpt_path):
+            LOGGER.info(f"📥 [Auto-Download] Chưa tìm thấy file trọng số LaMa, đang tải tự động một lần duy nhất từ HuggingFace...")
+            from utils.download_util import download_and_check_files
+            for download_kwargs in self.download_file_list:
+                download_and_check_files(**download_kwargs)
+
+        self.model = load_lama_mpe(ckpt_path, device='cpu', use_mpe=False, large_arch=True)
         self.moveToDevice(device, precision=precision)
 
 
@@ -521,13 +751,14 @@ class Flux2Klein(InpainterBase):
                 1536,
                 2048
             ], 
-            'value': 1024
+            'value': 1536
         }, 
         'device': DEVICE_SELECTOR(),
-        'step': 8
+        'step': 16
     }
     check_need_inpaint = False
     inpaint_by_block = False
+    download_file_on_load = True
 
     download_file_list = [
             {

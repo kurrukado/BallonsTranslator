@@ -289,6 +289,7 @@ class GlobalSearchWidget(Widget):
     def __init__(self, parent: QWidget = None, *args, **kwargs) -> None:
         super().__init__(parent)
         self.imgtrans_proj: ProjImgTrans = None
+        self.page_set = set()
 
         self.search_rstedit_list: List[SourceTextEdit] = []
         self.search_counter_list: List[int] = []

@@ -10,7 +10,7 @@ except:
 from .textitem import TextBlkItem, TextBlock
 from .textedit_area import TransTextEdit, SourceTextEdit
 from utils.fontformat import FontFormat
-import utils.config as C
+from utils.config import pcfg
 from .misc import doc_replace, doc_replace_no_shift
 from .texteditshapecontrol import TextBlkShapeControl
 from .page_search_widget import PageSearchWidget, Matched
@@ -19,6 +19,8 @@ from .scene_textlayout import PUNSET_HALF
 
 
 def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit: Union[TransTextEdit, TextBlkItem], pos: int, added_text: str, joint_previous: bool = False):
+    if pcfg.let_uppercase_flag and added_text:
+        added_text = added_text.upper()
     ori_count = target_edit.document().characterCount()
     new_count = src_edit.document().characterCount()
     removed = ori_count + len(added_text) - new_count

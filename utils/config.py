@@ -20,9 +20,9 @@ class RunStatus:
 @nested_dataclass
 class ModuleConfig(Config):
     textdetector: str = 'ctd'
-    ocr: str = "mit48px"
+    ocr: str = "paddle_ocr"
     inpainter: str = 'lama_large_512px'
-    translator: str = "google"
+    translator: str = "LLM_API_Translator"
     enable_detect: bool = True
     keep_exist_textlines: bool = False
     enable_ocr: bool = True
@@ -34,14 +34,15 @@ class ModuleConfig(Config):
     ocr_params: Dict = field(default_factory=lambda: dict())
     translator_params: Dict = field(default_factory=lambda: dict())
     inpainter_params: Dict = field(default_factory=lambda: dict())
-    translate_source: str = '日本語'
-    translate_target: str = '简体中文'
+    translate_source: str = 'English'
+    translate_target: str = 'Tiếng Việt'
     translate_by_textblock: bool = False
 
     check_need_inpaint: bool = True
-    load_model_on_demand: bool = False
+    load_model_on_demand: bool = True
     empty_runcache: bool = False
     finish_code: int = 15
+    auto_clean_cache_days: int = 0
 
     def get_params(self, module_key: str, for_saving=False) -> dict:
         d = self[module_key + '_params']
@@ -196,13 +197,9 @@ class ProgramConfig(Config):
 
         if 'module' in config_dict:
             module_cfg = config_dict['module']
-            trans_params = module_cfg['translator_params']
-            repl_pairs = {'baidu': 'Baidu', 'caiyun': 'Caiyun', 'chatgpt': 'ChatGPT', 'Deepl': 'DeepL', 'papago': 'Papago'}
-            for k, i in repl_pairs.items():
-                if k in trans_params:
-                    trans_params[i] = trans_params.pop(k)
-            if module_cfg['translator'] in repl_pairs:
-                module_cfg['translator'] = repl_pairs[module_cfg['translator']]
+            valid_translators = {'LLM_API_Translator', 'Copy Source', 'None'}
+            if module_cfg.get('translator') not in valid_translators:
+                module_cfg['translator'] = 'LLM_API_Translator'
 
         return ProgramConfig(**config_dict)
     

@@ -303,7 +303,28 @@ class SourceTextEdit(QTextEdit):
 
         
 class TransTextEdit(SourceTextEdit):
-    pass
+    def insertFromMimeData(self, source: QMimeData) -> None:
+        if pcfg.let_uppercase_flag and source.hasText():
+            mime = QMimeData()
+            mime.setText(source.text().upper())
+            super().insertFromMimeData(mime)
+        else:
+            super().insertFromMimeData(source)
+
+    def focusOutEvent(self, e: QFocusEvent) -> None:
+        if pcfg.let_uppercase_flag and not self.in_redo_undo and not self.pre_editing:
+            current_text = self.toPlainText()
+            upper_text = current_text.upper()
+            if current_text != upper_text:
+                tc = self.textCursor()
+                pos = tc.position()
+                self.block_all_signals(True)
+                self.setPlainText(upper_text)
+                self.block_all_signals(False)
+                tc.setPosition(min(pos, len(upper_text)))
+                self.setTextCursor(tc)
+                self.text_changed.emit()
+        super().focusOutEvent(e)
 
 
 class RowIndexEditor(QLineEdit):

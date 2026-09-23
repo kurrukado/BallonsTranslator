@@ -61,3 +61,10 @@ install_venv.bat
 install-BT.cmd
 download_models.bat
 Ultralytics/settings.json
+
+# Agent, cache and runtime state
+.agents/
+.ponytail/
+ponytail/
+cache/
+data/training_feedback/

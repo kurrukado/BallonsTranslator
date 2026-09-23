@@ -417,8 +417,12 @@ def layout_text(
     # if ref_src_lines:
     #     mask = np.ones_like(mask) * 255
 
+    inner_pad_w = mask.shape[1] * 0.05
+    safe_max_width = max(10.0, mask.shape[1] - 2 * inner_pad_w)
     if max_central_width == np.inf:
-        max_central_width = mask.shape[1]
+        max_central_width = safe_max_width
+    else:
+        max_central_width = min(max_central_width, safe_max_width)
 
     centroid_x, centroid_y = centroid
     center_x = mask_xyxy[0] + centroid_x

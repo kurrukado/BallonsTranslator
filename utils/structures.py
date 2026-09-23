@@ -8,10 +8,13 @@ import numpy as np
 
 
 def get_annotations(obj):
-    if hasattr(obj, '__annotations__'):
-        return obj.__annotations__
-    else:
-        return inspect.get_annotations(obj)
+    target = obj if inspect.isclass(obj) else getattr(obj, '__class__', obj)
+    if hasattr(target, '__annotations__'):
+        return target.__annotations__
+    try:
+        return inspect.get_annotations(target)
+    except Exception:
+        return getattr(target, '__annotations__', {})
 
 
 # decorator to wrap original __init__
@@ -29,10 +32,11 @@ def nested_dataclass(*args, **dataclass_kwargs):
           
         def __init__(self, *args, **kwargs):
               
-            store_deprecated = 'deprecated_attributes' in get_annotations(self)
+            cls_annotations = get_annotations(self.__class__)
+            store_deprecated = 'deprecated_attributes' in cls_annotations
             deprecated = {}
             for name in list(kwargs.keys()):
-                if name not in get_annotations(self):
+                if name not in cls_annotations:
                     # print(f'warning: type object \'{self.__class__.__name__}\' has no attribute {name}, might be loading from an older config')
                     val = kwargs.pop(name)
                     if store_deprecated:

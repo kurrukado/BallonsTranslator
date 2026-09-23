@@ -212,8 +212,18 @@ class ProjImgTrans:
                 self.set_current_img_byidx(0)
 
     def get_page_progress(self, pagename: str):
-        fin_code = self._image_info[pagename]['finish_code']
-        return (fin_code & pcfg.module.finish_code) == pcfg.module.finish_code
+        if pagename not in self._image_info:
+            return False
+        fin_code = self._image_info[pagename].get('finish_code', 0)
+        is_fin = (fin_code & pcfg.module.finish_code) == pcfg.module.finish_code
+        if not is_fin:
+            return False
+        # If translation is enabled, ensure all blocks on this page actually have non-empty translations
+        if pcfg and hasattr(pcfg, "module") and pcfg.module.enable_translate and pagename in self.pages:
+            page_blks = self.pages[pagename]
+            if page_blks and any(not getattr(blk, 'translation', '').strip() for blk in page_blks):
+                return False
+        return True
 
     def set_page_progress(self, pagename, code):
         self._image_info[pagename]['finish_code'] = code 
@@ -329,19 +339,56 @@ class ProjImgTrans:
         self.save()
         
     def save(self, keep_exist_as_backup=False):
-        if not osp.exists(self.directory):
+        if not self.directory or not osp.exists(self.directory):
             raise ProjectDirNotExistException
-        tmp_save_tgt = self.proj_path + '.tmp'
+        
+        if not self.proj_path and self.directory:
+            self.proj_path = osp.join(self.directory, self.proj_name() + '.json')
+
+        proj_dir = osp.dirname(self.proj_path)
+        if proj_dir and not osp.exists(proj_dir):
+            os.makedirs(proj_dir, exist_ok=True)
+            
+        tmp_save_tgt = self.proj_path + f'.tmp_{os.getpid()}'
         try:
+            dict_data = self.to_dict()
+            json_str = json.dumps(dict_data, ensure_ascii=False, cls=TextBlkEncoder)
             with open(tmp_save_tgt, "w", encoding="utf-8") as f:
-                f.write(json.dumps(self.to_dict(), ensure_ascii=False, cls=TextBlkEncoder))
-        except:
-            raise Exception(f'Failed to write {self.to_dict()}')
-        if osp.exists(self.proj_path) and keep_exist_as_backup:
-            os.replace(self.proj_path, self.proj_path + '.backup')
-            os.replace(tmp_save_tgt, self.proj_path)
-        else:
-            os.replace(tmp_save_tgt, self.proj_path)
+                f.write(json_str)
+        except Exception as e:
+            LOGGER.error(f'Failed to serialize project to JSON: {e}')
+            if osp.exists(tmp_save_tgt):
+                try:
+                    os.remove(tmp_save_tgt)
+                except Exception:
+                    pass
+            return
+
+        # Atomic replace with retry for Windows file locking
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                if osp.exists(self.proj_path) and keep_exist_as_backup:
+                    backup_path = self.proj_path + '.backup'
+                    if osp.exists(backup_path):
+                        try:
+                            os.remove(backup_path)
+                        except Exception:
+                            pass
+                    os.replace(self.proj_path, backup_path)
+                os.replace(tmp_save_tgt, self.proj_path)
+                break
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    LOGGER.warning(f"Failed to replace {self.proj_path}: {e}. Falling back to direct write.")
+                    try:
+                        shutil.copy2(tmp_save_tgt, self.proj_path)
+                        os.remove(tmp_save_tgt)
+                    except Exception as err:
+                        LOGGER.error(f"Fallback write also failed: {err}")
+                else:
+                    time.sleep(0.05)
+
         LOGGER.debug(f'project saved to {self.proj_path}')
 
     def to_dict(self) -> Dict:
@@ -378,6 +425,8 @@ class ProjImgTrans:
     def get_mask_path(self, imgname: str = None, get_last_modified=False) -> str:
         if imgname is None:
             imgname = self.current_img
+        if imgname is None:
+            return ""
 
         fileprefix = osp.join(self.mask_dir(), osp.splitext(imgname)[0])
         if get_last_modified:
@@ -397,6 +446,8 @@ class ProjImgTrans:
     def get_inpainted_path(self, imgname: str = None, get_last_modified=False) -> str:
         if imgname is None:
             imgname = self.current_img
+        if imgname is None:
+            return ""
 
         fileprefix = osp.join(self.inpainted_dir(), osp.splitext(imgname)[0])
         if get_last_modified:
@@ -431,7 +482,11 @@ class ProjImgTrans:
                 inpainted = np.array(inpainted)
         return inpainted
 
-    def get_result_path(self, imgname: str) -> str:
+    def get_result_path(self, imgname: str = None) -> str:
+        if imgname is None:
+            imgname = self.current_img
+        if imgname is None:
+            return ""
         ext = '.png'
         if pcfg is not None:
             if pcfg.imgsave_ext not in {'.jpg', '.png', '.webp', '.jxl'}:

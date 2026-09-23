@@ -2,11 +2,15 @@ from typing import Callable, List, Dict
 import time
 import datetime
 
-from qtpy.QtWidgets import QDialog, QLabel, QHBoxLayout, QVBoxLayout, QMessageBox, QSizePolicy, QProgressBar, QPushButton
-from qtpy.QtGui import  QCloseEvent, QShowEvent
+from qtpy.QtWidgets import (
+    QDialog, QLabel, QHBoxLayout, QVBoxLayout, QMessageBox, QSizePolicy,
+    QProgressBar, QPushButton, QTextEdit
+)
+from qtpy.QtGui import QCloseEvent, QShowEvent, QTextCursor
 from qtpy.QtCore import Qt, Signal
 
 from utils.shared import remove_from_runtime_widget_set, add_to_runtime_widget_set
+from utils.logger import qt_log_emitter
 from .widget import Widget
 
 
@@ -174,29 +178,115 @@ class ImgtransProgressMessageBox(ProgressMessageBox):
         self.inpaint_bar = TaskProgressBar(self.tr('Inpainting: '), True, self)
         self.translate_bar = TaskProgressBar(self.tr('Translating: '), True, self)
 
+        # Status text label for immediate human-readable status
+        self.status_detail_label = QLabel(self.tr('⚡ Trạng thái: Sẵn sàng...'), self)
+        self.status_detail_label.setStyleSheet(
+            "font-size: 11px; font-weight: bold; color: #3b82f6; margin-top: 6px; margin-bottom: 2px;"
+        )
+        self.status_detail_label.setWordWrap(True)
+
+        # Live Log Console
+        self.log_console = QTextEdit(self)
+        self.log_console.setReadOnly(True)
+        self.log_console.setFixedHeight(140)
+        self.log_console.setStyleSheet("""
+            QTextEdit {
+                background-color: #181825;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+                border-radius: 6px;
+                font-family: 'Consolas', 'Cascadia Code', 'Segoe UI Mono', monospace;
+                font-size: 11px;
+                padding: 6px;
+            }
+        """)
+
         layout = self.layout()
         layout.addWidget(self.detect_bar)
         layout.addWidget(self.ocr_bar)
         layout.addWidget(self.inpaint_bar)
         layout.addWidget(self.translate_bar)
+        layout.addWidget(self.status_detail_label)
+        layout.addWidget(self.log_console)
         
-        # 添加停止按钮
+        # Controls: Stop Button + Toggle Logs + Clear Logs
         self.stop_button = QPushButton(self.tr('Stop'), self)
         self.stop_button.clicked.connect(self.on_stop_clicked)
+        self.stop_button.setStyleSheet("padding: 4px 18px; font-weight: bold;")
+        
+        self.toggle_log_button = QPushButton(self.tr('Ẩn/Hiện Log'), self)
+        self.toggle_log_button.clicked.connect(self.toggle_log_console)
+        self.toggle_log_button.setStyleSheet("padding: 4px 12px; font-size: 11px;")
+
+        self.clear_log_button = QPushButton(self.tr('Xóa Log'), self)
+        self.clear_log_button.clicked.connect(self.clear_logs)
+        self.clear_log_button.setStyleSheet("padding: 4px 12px; font-size: 11px;")
+
         button_layout = QHBoxLayout()
+        button_layout.addWidget(self.toggle_log_button)
+        button_layout.addWidget(self.clear_log_button)
         button_layout.addStretch()
         button_layout.addWidget(self.stop_button)
         button_layout.addStretch()
         layout.addLayout(button_layout)
 
-        self.setFixedWidth(self.sizeHint().width())
+        self.setMinimumWidth(560)
+
+        # Connect global Qt log emitter
+        if qt_log_emitter is not None:
+            qt_log_emitter.log_signal.connect(self.on_receive_log)
     
+    def toggle_log_console(self):
+        self.log_console.setVisible(not self.log_console.isVisible())
+        self.adjustSize()
+
+    def clear_logs(self):
+        self.log_console.clear()
+
+    def on_receive_log(self, level: str, msg: str, time_str: str):
+        level_upper = level.upper()
+        if level_upper in ['ERROR', 'CRITICAL']:
+            color = '#f38ba8'  # red
+            prefix = '❌'
+        elif level_upper == 'WARNING':
+            color = '#f9e2af'  # yellow
+            prefix = '⚠️'
+        elif any(k in msg.lower() for k in ['translate', 'gemini', 'dịch', 'translating']):
+            color = '#a6e3a1'  # green
+            prefix = '🌐'
+        elif any(k in msg.lower() for k in ['detect', 'phát hiện']):
+            color = '#89dceb'  # sky
+            prefix = '🔍'
+        elif any(k in msg.lower() for k in ['ocr', 'nhận diện']):
+            color = '#fab387'  # peach
+            prefix = '📖'
+        elif any(k in msg.lower() for k in ['inpaint', 'xóa chữ']):
+            color = '#cba6f7'  # mauve
+            prefix = '🎨'
+        else:
+            color = '#cdd6f4'  # text
+            prefix = 'ℹ️'
+
+        html_line = f"<div style='margin-bottom: 2px;'><span style='color: #6c7086;'>[{time_str}]</span> {prefix} <span style='color: {color}; font-weight: {'bold' if level_upper in ['ERROR', 'WARNING'] else 'normal'};'>{msg}</span></div>"
+        self.log_console.append(html_line)
+        self.log_console.moveCursor(QTextCursor.MoveOperation.End)
+
+        # Also update the immediate status label
+        display_msg = (msg[:62] + '...') if len(msg) > 65 else msg
+        self.status_detail_label.setText(f"{prefix} {display_msg}")
+        if level_upper in ['ERROR', 'CRITICAL']:
+            self.status_detail_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #ef4444; margin-top: 6px; margin-bottom: 2px;")
+        elif level_upper == 'WARNING':
+            self.status_detail_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #eab308; margin-top: 6px; margin-bottom: 2px;")
+        else:
+            self.status_detail_label.setStyleSheet("font-size: 11px; font-weight: bold; color: #3b82f6; margin-top: 6px; margin-bottom: 2px;")
+
     def on_stop_clicked(self):
         self.stop_clicked.emit()
         # 重置按钮状态（为下次使用准备）
         self.stop_button.setEnabled(False)
         self.stop_button.setText(self.tr('trying to stop...'))
-
+        self.status_detail_label.setText(self.tr('⚠️ Đang dừng tiến trình...'))
 
     def updateDetectProgress(self, value: int, msg: str = ''):
         self.detect_bar.updateProgress(value, msg)
@@ -218,6 +308,8 @@ class ImgtransProgressMessageBox(ProgressMessageBox):
         # 重置停止按钮状态
         self.stop_button.setEnabled(True)
         self.stop_button.setText(self.tr('Stop'))
+        self.status_detail_label.setText(self.tr('⚡ Bắt đầu tiến trình dịch truyện...'))
+        self.log_console.append(f"<div style='color: #89b4fa; font-weight: bold; margin-top: 4px;'>🚀 [PIPELINE] Khởi động dịch truyện với AI Deep Learning & Gemini LLM...</div>")
 
     def show_all_bars(self):
         self.detect_bar.show()

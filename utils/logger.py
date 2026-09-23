@@ -97,3 +97,25 @@ logging.setLoggerClass(ColoredLogger)
 logger = logging.getLogger('BallonTranslator')
 logger.setLevel(logging.DEBUG)
 logger.propagate = False
+
+try:
+    from qtpy.QtCore import QObject, Signal
+
+    class QtLogEmitter(QObject):
+        log_signal = Signal(str, str, str)  # level, message, time_str
+
+    qt_log_emitter = QtLogEmitter()
+
+    class QtLogHandler(logging.Handler):
+        def emit(self, record):
+            try:
+                time_str = datetime.datetime.fromtimestamp(record.created).strftime('%H:%M:%S')
+                qt_log_emitter.log_signal.emit(record.levelname, record.getMessage(), time_str)
+            except Exception:
+                pass
+
+    _qt_handler = QtLogHandler()
+    _qt_handler.setLevel(logging.INFO)
+    logger.addHandler(_qt_handler)
+except Exception:
+    qt_log_emitter = None

@@ -29,31 +29,49 @@ def qrgb2bgr(color: Union[QColor, Tuple, List] = None) -> Tuple[int, int, int]:
             color = (color[2], color[1], color[0])
     return color
 
-# https://stackoverflow.com/questions/45020672/convert-pyqt5-qpixmap-to-numpy-ndarray
-def pixmap2ndarray(pixmap: Union[QPixmap, QImage], keep_alpha=True):
-    size = pixmap.size()
-    h = size.width()
-    w = size.height()
-    if isinstance(pixmap, QPixmap):
-        qimg = pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
-    else:
-        qimg = pixmap.convertToFormat(QImage.Format.Format_RGBA8888)
-
-    byte_str = qimg.bits()
-    if byte_str is None:
+def pixmap2ndarray(pixmap: Union[QPixmap, QImage, np.ndarray], keep_alpha=True):
+    if pixmap is None:
         return None
+    if isinstance(pixmap, np.ndarray):
+        if keep_alpha:
+            return pixmap
+        else:
+            return np.ascontiguousarray(pixmap[:, :, :3]) if pixmap.ndim == 3 and pixmap.shape[2] >= 3 else pixmap
 
-    if hasattr(byte_str, 'asstring'):
-        byte_str = qimg.bits().asstring(h * w * 4)
-    else:
-        byte_str = byte_str.tobytes()
+    try:
+        if isinstance(pixmap, QPixmap):
+            qimg = pixmap.toImage()
+        else:
+            qimg = pixmap
 
-    img = np.frombuffer(byte_str, dtype=np.uint8).reshape((w,h,4)).copy()
-    
-    if keep_alpha:
-        return img
-    else:
-        return np.ascontiguousarray(img[:,:,:3])
+        qimg = qimg.convertToFormat(QImage.Format.Format_RGBA8888)
+        w = qimg.width()
+        h = qimg.height()
+        if w <= 0 or h <= 0:
+            return None
+
+        byte_str = qimg.bits()
+        if byte_str is None:
+            return None
+
+        bytes_per_line = qimg.bytesPerLine()
+        total_bytes = bytes_per_line * h
+
+        if hasattr(byte_str, 'asstring'):
+            raw_data = byte_str.asstring(total_bytes)
+        else:
+            raw_data = byte_str.tobytes()[:total_bytes]
+
+        raw_array = np.frombuffer(raw_data, dtype=np.uint8).reshape((h, bytes_per_line))
+        img = raw_array[:, :w * 4].reshape((h, w, 4)).copy()
+
+        if keep_alpha:
+            return img
+        else:
+            return np.ascontiguousarray(img[:, :, :3])
+    except Exception as e:
+        LOGGER.error(f"Error in pixmap2ndarray: {e}")
+        return None
 
 def ndarray2pixmap(img, return_qimg=False):
     if len(img.shape) == 2:
@@ -67,8 +85,8 @@ def ndarray2pixmap(img, return_qimg=False):
     img = np.ascontiguousarray(img)
     qImg = QImage(img.data, width, height, bytesPerLine, img_format)
     if return_qimg:
-        return qImg
-    return QPixmap(qImg)
+        return qImg.copy()
+    return QPixmap.fromImage(qImg)
 
 
 class LruIgnoreArg:

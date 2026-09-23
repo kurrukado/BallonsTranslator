@@ -61,12 +61,12 @@ def is_installed(package):
     return spec is not None
 
 
-def run(command, desc=None, errdesc=None, custom_env=None, live=False):
+def run(command, desc=None, errdesc=None, custom_env=None, live=False, timeout=None):
     if desc is not None:
         print(desc)
 
     if live:
-        result = subprocess.run(command, shell=True, env=os.environ if custom_env is None else custom_env)
+        result = subprocess.run(command, shell=True, env=os.environ if custom_env is None else custom_env, timeout=timeout)
         if result.returncode != 0:
             raise RuntimeError(f"""{errdesc or 'Error running command'}.
 Command: {command}
@@ -74,7 +74,7 @@ Error code: {result.returncode}""")
 
         return ""
 
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, env=os.environ if custom_env is None else custom_env)
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, env=os.environ if custom_env is None else custom_env, timeout=timeout)
 
     if result.returncode != 0:
 
@@ -104,7 +104,7 @@ def commit_hash():
         return stored_commit_hash
 
     try:
-        stored_commit_hash = run(f"{git} rev-parse HEAD").strip()
+        stored_commit_hash = run(f"{git} rev-parse HEAD", timeout=3).strip()
     except Exception:
         stored_commit_hash = "<none>"
 
@@ -232,8 +232,13 @@ def main():
     # yield QWindowsContext: OleInitialize() failed on py3.10, 
     from modules.base import init_module_registries
     from modules.prepare_local_files import prepare_local_files_forall
+    from utils.gemini_proxy_launcher import ensure_gemini_proxy_running
     init_module_registries()
     prepare_local_files_forall()
+    try:
+        ensure_gemini_proxy_running()
+    except Exception as e:
+        LOGGER.warning(f"Could not auto-start Gemini Proxy: {e}")
 
     if not args.headless and not args.headless_continuous:
         ps = QGuiApplication.primaryScreen()
@@ -257,17 +262,17 @@ def main():
         for fp in find_all_files_recursive(PATH_FONTS, FONT_EXTS):
             fnt_idx = QFontDatabase.addApplicationFont(fp)
             if fnt_idx >= 0:
-                shared.CUSTOM_FONTS.append(QFontDatabase.applicationFontFamilies(fnt_idx)[0])
+                fams = QFontDatabase.applicationFontFamilies(fnt_idx)
+                for fam in fams:
+                    if fam not in shared.CUSTOM_FONTS:
+                        shared.CUSTOM_FONTS.append(fam)
 
-    if sys.platform == 'win32' and (args.headless or args.headless_continuous):
-        # font database does not initialise on windows with qpa -offscreen:
-        # whttps://github.com/dmMaze/BallonsTranslator/issues/519
-        from qtpy.QtCore import QStandardPaths
-        font_dir_list = QStandardPaths.standardLocations(QStandardPaths.StandardLocation.FontsLocation)
-        for fd in font_dir_list:
-            fp_list = find_all_files_recursive(fd, FONT_EXTS)
-            for fp in fp_list:
-                fnt_idx = QFontDatabase.addApplicationFont(fp)
+    # Ensure Yuki-CCMarianChurchlandJournal is primary (index 0)
+    for fam in list(shared.CUSTOM_FONTS):
+        if 'CCMarian' in fam or 'Marian' in fam:
+            shared.CUSTOM_FONTS.remove(fam)
+            shared.CUSTOM_FONTS.insert(0, fam)
+            break
 
     if shared.FLAG_QT6:
         shared.FONT_FAMILIES = set(f for f in QFontDatabase.families())
@@ -281,7 +286,7 @@ def main():
     app_font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     app_font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias | QFont.StyleStrategy.NoSubpixelAntialias)
     QGuiApplication.setFont(app_font)
-    shared.DEFAULT_FONT_FAMILY = app_font.family()
+    shared.DEFAULT_FONT_FAMILY = shared.CUSTOM_FONTS[0] if shared.CUSTOM_FONTS else app_font.family()
     shared.APP_DEFAULT_FONT = app_font.family()
     
     if args.ldpi:
@@ -375,20 +380,35 @@ def prepare_environment():
                                                "pip install https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torch-2.8.0a0%2Bgitfc14c65-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchvision-0.24.0a0%2Bc85f008-cp312-cp312-win_amd64.whl https://repo.radeon.com/rocm/windows/rocm-rel-6.4.4/torchaudio-2.6.0a0%2B1a8f621-cp312-cp312-win_amd64.whl")
         else:
             # AMD GPU: Cuda 11.8, Pytorch 2.2.2
-            torch_command = os.environ.get('TORCH_COMMAND', "pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cu118 --disable-pip-version-check")
+            torch_command = os.environ.get('TORCH_COMMAND', "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 --disable-pip-version-check")
     else:
-        torch_command = os.environ.get('TORCH_COMMAND', "pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu118 --disable-pip-version-check")
+        torch_command = os.environ.get('TORCH_COMMAND', "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 --disable-pip-version-check")
+
     if args.reinstall_torch or not is_installed("torch") or not is_installed("torchvision"):
-        run(f'"{python}" -m {torch_command}', "Installing torch and torchvision", "Couldn't install torch", live=True)
-        req_updated = True
+        try:
+            run(f'"{python}" -m {torch_command}', "Installing torch and torchvision", "Couldn't install torch", live=True)
+            req_updated = True
+        except Exception as e:
+            print(f"Notice: Pinned PyTorch cu118 wheel is not available for Python {sys.version.split()[0]}. Trying standard PyPI install...")
+            try:
+                run(f'"{python}" -m pip install torch torchvision --disable-pip-version-check', "Installing torch from PyPI", "Couldn't install torch from PyPI", live=True)
+                req_updated = True
+            except Exception as e2:
+                print("Notice: Proceeding with ONNX Runtime and LLM API modules (RapidOCR, Gemini Proxy, etc.).")
 
     if not check_req_file(args.requirements):
-        run_pip(f"install -r {args.requirements}", "requirements")
-        req_updated = True
+        try:
+            run_pip(f"install -r {args.requirements}", "requirements")
+            req_updated = True
+        except Exception as e:
+            print(f"Notice: Some secondary requirements skipped: {e}")
 
     if req_updated:
-        import site
-        importlib.reload(site)
+        try:
+            import site
+            importlib.reload(site)
+        except Exception:
+            pass
 
 
 

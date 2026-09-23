@@ -262,9 +262,13 @@ class Canvas(QGraphicsScene):
 
         self.addItem(self.baseLayer)
         self.inpaintLayer.setParentItem(self.baseLayer)
+        self.inpaintLayer.setZValue(0)
         self.drawingLayer.setParentItem(self.baseLayer)
+        self.drawingLayer.setZValue(1)
         self.textLayer.setParentItem(self.baseLayer)
+        self.textLayer.setZValue(2)
         self.txtblkShapeControl.setParentItem(self.baseLayer)
+        self.txtblkShapeControl.setZValue(3)
 
         self.scalefactor_changed.connect(self.onScaleFactorChanged)
         self.selectionChanged.connect(self.on_selection_changed)     
@@ -344,7 +348,24 @@ class Canvas(QGraphicsScene):
 
     def render_result_img(self):
 
+        inpainted_array = self.imgtrans_proj.inpainted_array
+        if inpainted_array is None:
+            inpainted_array = self.imgtrans_proj.load_inpainted_by_imgname(self.imgtrans_proj.current_img)
+        if inpainted_array is None:
+            inpainted_array = self.imgtrans_proj.img_array
+
+        base_visible_before = self.baseLayer.isVisible()
+        inpaint_visible_before = self.inpaintLayer.isVisible()
+        drawing_visible_before = self.drawingLayer.isVisible()
+        txtctrl_visible_before = self.txtblkShapeControl.isVisible()
+
+        # CRITICAL FIX: baseLayer is the parent container of textLayer.
+        # It MUST remain visible so that child textLayer and TextBlkItems are rendered by scene.render()
+        self.baseLayer.show()
         self.inpaintLayer.hide()
+        self.drawingLayer.hide()
+        self.txtblkShapeControl.hide()
+
         tlayer_opacity_before = self.textLayer.opacity()
         tlayer_visible = self.textLayer.isVisible()
         if tlayer_opacity_before != 1:
@@ -362,10 +383,13 @@ class Canvas(QGraphicsScene):
             blk_item = self.txtblkShapeControl.blk_item
             if blk_item.is_editting():
                 blk_item.endEdit(keep_focus=False)
-            if blk_item.isSelected():
-                blk_item.setSelected(False)
+        old_draw_rects = []
+        for item in self.textLayer.childItems():
+            if hasattr(item, 'draw_rect'):
+                old_draw_rects.append((item, item.draw_rect))
+                item.draw_rect = False
 
-        result = ndarray2pixmap(self.imgtrans_proj.inpainted_array, return_qimg=True)
+        result = ndarray2pixmap(inpainted_array, return_qimg=True)
         canvas_sz = self.img_window_size()
         painter = QPainter(result)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -373,18 +397,26 @@ class Canvas(QGraphicsScene):
         rect = QRectF(0, 0, canvas_sz.width(), canvas_sz.height())
         self.render(painter, rect, rect)   #  produce blurred result if target/source rect not specified #320
         painter.end()
+
+        for item, old_val in old_draw_rects:
+            item.draw_rect = old_val
         
         if tlayer_opacity_before != 1:
             self.textLayer.setOpacity(tlayer_opacity_before)
         if not tlayer_visible:
             self.textLayer.hide()
+
         if scale_before != 1:
             self._set_scene_scale(scale_before)
             if self.hscroll_bar.value() != hb_pos:
                 self.hscroll_bar.setValue(hb_pos)
             if self.vscroll_bar.value() != vb_pos:
                 self.vscroll_bar.setValue(vb_pos)
-        self.inpaintLayer.show()
+
+        self.baseLayer.setVisible(base_visible_before)
+        self.inpaintLayer.setVisible(inpaint_visible_before)
+        self.drawingLayer.setVisible(drawing_visible_before)
+        self.txtblkShapeControl.setVisible(txtctrl_visible_before)
 
         return result
     

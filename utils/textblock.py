@@ -41,9 +41,11 @@ class TextBlock:
     _detected_font_size: float = -1
     det_model: str = None
     label: str = None # ysg yolo label
+    is_balloon: bool = None # True if inside speech balloon, False if free text / narration / SFX, None before classification
 
     region_mask: np.ndarray = None
     region_inpaint_dict: Dict = None
+    emotion_tag: str = "normal"  # "shout", "whisper", "fear", "surprise", "normal"
 
     fontformat: FontFormat = field(default_factory=lambda: FontFormat())
 
@@ -52,6 +54,18 @@ class TextBlock:
     _detected_font_confidence: float = 0.0  # 识别置信度
 
     deprecated_attributes: dict = field(default_factory = lambda: dict())
+
+    def is_in_balloon(self) -> bool:
+        """Determines if this text block is inside a dialogue balloon vs outside/SFX/narration."""
+        if self.is_balloon is not None and not self.is_balloon:
+            return False
+        if self.label is not None:
+            lbl = str(self.label).lower().strip()
+            if lbl in ['sfx', 'narration', 'other', 'hengxie', 'free_text', 'sound_effect']:
+                return False
+            if lbl in ['balloon', 'qipao', 'dialogue', 'speech']:
+                return True
+        return bool(self.is_balloon) if self.is_balloon is not None else True
 
     @property
     def vertical(self):
@@ -315,6 +329,11 @@ class TextBlock:
     
     def min_rect(self, rotate_back=True, ids=None) -> List[int]:
         angled, center, polygons = self.unrotated_polygons(ids=ids)
+        if polygons.size == 0 or polygons[:, ::2].size == 0 or polygons[:, 1::2].size == 0:
+            if hasattr(self, 'xyxy') and len(self.xyxy) == 4:
+                x1, y1, x2, y2 = [int(v) for v in self.xyxy]
+                return np.array([[[x1, y1], [x2, y1], [x2, y2], [x1, y2]]], dtype=np.int64)
+            return np.array([[[0, 0], [10, 0], [10, 10], [0, 10]]], dtype=np.int64)
         min_x = polygons[:, ::2].min()
         min_y = polygons[:, 1::2].min()
         max_x = polygons[:, ::2].max()
@@ -489,7 +508,10 @@ class TextBlock:
     def recalulate_alignment(self):
         angled, center, polygons = self.unrotated_polygons()
         polygons = polygons.reshape(-1, 4, 2)
-        
+        if polygons.shape[0] <= 1:
+            self.alignment = TextAlignment.Center
+            return
+
         left_std = np.std(polygons[:, 0, 0])
         right_std = np.std(polygons[:, 1, 0])
         center_std = np.std((polygons[:, 0, 0] + polygons[:, 1, 0]) / 2) * 0.7

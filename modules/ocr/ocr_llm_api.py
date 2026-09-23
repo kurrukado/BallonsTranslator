@@ -4,7 +4,7 @@ import base64
 import json
 import cv2
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 import openai
 import httpx
@@ -150,8 +150,8 @@ class LLM_OCR(OCRBase):
     params = {
         "provider": {
             "type": "selector",
-            "options": ["OpenAI", "Google", "OpenRouter", "Ollama"],
-            "value": "OpenAI",
+            "options": ["Google", "OpenAI", "OpenRouter", "Ollama"],
+            "value": "Google",
             "description": "Select the LLM provider.",
         },
         "api_key": {
@@ -172,7 +172,7 @@ class LLM_OCR(OCRBase):
             "options": popular_models + [
                 "OLLAMA: (override model field)"
             ],
-            "value": "OAI: gpt-4o-mini",
+            "value": "GGL: gemini-3.6-flash",
             "description": "Select the model to use.",
         },
         "override_model": {
@@ -182,7 +182,7 @@ class LLM_OCR(OCRBase):
         "language": {
             "type": "selector",
             "options": list(lang_map.keys()),
-            "value": "Japanese",
+            "value": "English",
             "description": "Language for OCR.",
         },
         "detail_level": {
@@ -193,21 +193,21 @@ class LLM_OCR(OCRBase):
         },
         "prompt": {
             "type": "editor",
-            "value": "Perform OCR on the provided manga image snippet. The language is **{language}**.\nRecognize all text, including handwritten sound effects (SFX).\n**CRITICAL INSTRUCTION:** If you see jumbled characters, it is likely vertical text that was read horizontally. First, mentally reconstruct the correct vertical text.\n**OUTPUT FORMATTING:** All recognized text from the image must be consolidated into a **single, continuous horizontal line**. Do not use newlines.\nYour final output must be ONLY the recognized text. No explanations.",
+            "value": "Perform strict OCR on the provided manga/comic image crop. The language is **{language}**.\n\nCRITICAL TRANSCRIPTION RULES:\n1. READ EXACTLY WHAT IS VISUALLY PRESENT in the image pixels.\n2. DO NOT translate. DO NOT paraphrase. DO NOT correct grammar or spelling.\n3. DO NOT invent missing words or extrapolate from story context.\n4. PRESERVE exact capitalization: If the comic text is in ALL-CAPS, your output MUST be ALL-CAPS.\n5. PRESERVE all punctuation exactly as visible: apostrophes (I'm, don't), ellipses (...), exclamation/question marks (?!, !?, !).\n6. PRESERVE sound effects (SFX) and character names exactly as lettered.\n7. OUTPUT FORMAT: Return ONLY the exact transcribed text as a single continuous horizontal line. No quotes, no markdown, no conversational filler.",
             "description": "The main prompt for the OCR task. Use {language} placeholder.",
         },
         "system_prompt": {
             "type": "editor",
-            "value": "You are a specialized OCR engine for manga and comics. Your primary function is to accurately extract and consolidate all recognized text from an image into a **single, continuous horizontal line**. You must return only the raw, recognized text. You do not interpret, translate, or explain the content. You are designed to intelligently handle common OCR errors, such as reconstructing jumbled characters that result from misreading vertical text.",
+            "value": "You are an elite, precision computer vision OCR specialist for comic and manga scanlations. Your SOLE duty is verbatim transcription of image text into text strings. You NEVER translate, summarize, normalize, paraphrase, or alter the source text in any way.",
             "description": "Optional system prompt to guide the model's behavior.",
         },
         "proxy": {
             "value": "",
             "description": "Proxy address (e.g., http(s)://user:password@host:port)",
         },
-        "delay": {"value": 1.0, "description": "Delay in seconds between requests."},
+        "delay": {"value": 6.0, "description": "Delay in seconds between requests (10 RPM = 6s min interval)."},
         "requests_per_minute": {
-            "value": 15,
+            "value": 10,
             "description": "Maximum number of requests per minute per key.",
         },
         "max_response_tokens": {
@@ -225,15 +225,28 @@ class LLM_OCR(OCRBase):
         self.minute_start_time = time.time()
         self.key_usage = {}
         self.current_key_index = 0
+        self._model_last_request_time: Dict[str, float] = {}
+        self.MODEL_RPM_LIMITS: Dict[str, int] = {
+            "gemini-3.5-flash-lite": 10,
+            "gemini-3.6-flash": 5,
+            "gemini-3.7-flash": 5,
+        }
 
     def _initialize_client(self, api_key_to_use: str):
+        if not api_key_to_use:
+            try:
+                from utils.config import ProgramConfig
+                api_key_to_use = ProgramConfig().get_param("translator", "apikey", "")
+            except Exception:
+                pass
+
         endpoint = self.endpoint
         provider = self.provider
         if not endpoint:
-            if provider == "OpenAI":
-                endpoint = "https://api.openai.com/v1"
-            elif provider == "Google":
+            if provider in ["Google", "Gemini Proxy"]:
                 endpoint = "https://generativelanguage.googleapis.com/v1beta/openai"
+            elif provider == "OpenAI":
+                endpoint = "https://api.openai.com/v1"
             elif provider == "OpenRouter":
                 endpoint = "https://openrouter.ai/api/v1"
             elif provider == "Ollama":
@@ -355,6 +368,20 @@ class LLM_OCR(OCRBase):
         self.last_request_time = time.time()
         self.request_count_minute += 1
 
+    def _respect_model_delay(self, model_name: str):
+        now = time.time()
+        rpm = self.MODEL_RPM_LIMITS.get(model_name, self.requests_per_minute if self.requests_per_minute > 0 else 10)
+        min_interval = max(60.0 / rpm, self.request_delay)
+        last_time = getattr(self, "_model_last_request_time", {}).get(model_name, 0.0)
+        time_since = now - last_time
+        if time_since < min_interval:
+            sleep_time = min_interval - time_since
+            self.logger.info(f"⏳ [OCR Throttle] Model '{model_name}' (Limit {rpm} RPM): Tạm dừng {sleep_time:.2f}s...")
+            time.sleep(sleep_time)
+        if not hasattr(self, "_model_last_request_time"):
+            self._model_last_request_time = {}
+        self._model_last_request_time[model_name] = time.time()
+
     def _respect_key_limit(self, key: str) -> bool:
         # This logic is identical to the one in LLM_API_Translator
         rpm = self.requests_per_minute
@@ -380,6 +407,15 @@ class LLM_OCR(OCRBase):
         api_keys = self.multiple_keys_list
         single_key = self.api_key
         if not api_keys and not single_key:
+            try:
+                from utils.gemini_proxy_launcher import get_saved_api_key
+                saved_key = get_saved_api_key()
+                if saved_key:
+                    return saved_key
+            except Exception:
+                pass
+            if self.provider in ["Gemini Proxy", "Google", "LLM Studio", "Ollama"]:
+                return "gemini-proxy-key"
             self.logger.error("No API keys provided.")
             return None
 
@@ -408,8 +444,8 @@ class LLM_OCR(OCRBase):
         api_key_to_use = self._select_api_key()
         
         if not api_key_to_use:
-            if self.provider in ["LLM Studio", "Ollama"]:
-                api_key_to_use = "dummy-key"
+            if self.provider in ["Gemini Proxy", "LLM Studio", "Ollama"]:
+                api_key_to_use = "gemini-proxy-key"
             else:
                 return "[ERROR: No available API key]"
 
@@ -448,15 +484,52 @@ class LLM_OCR(OCRBase):
             if ": " in model_name:
                 model_name = model_name.split(": ", 1)[1]
 
-            self.logger.debug(f"OCR request with model: {model_name}")
+            if self.provider in ["Google", "Gemini Proxy"]:
+                # Use model names as-is - they are real Google API model names
+                target_model = model_name
+            else:
+                target_model = model_name
 
-            response = self.client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                max_tokens=self.max_response_tokens,
-            )
+            candidates = [target_model]
+            if self.provider in ["Google", "Gemini Proxy"]:
+                for m in ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash"]:
+                    if m not in candidates:
+                        candidates.append(m)
 
-            if response.choices and response.choices[0].message.content:
+            max_retries = 3
+            response = None
+            last_error = None
+            for current_model in candidates:
+                self._respect_model_delay(current_model)
+                for attempt in range(max_retries):
+                    try:
+                        self.logger.debug(f"OCR request with model: {current_model} (attempt {attempt+1}/{max_retries})")
+                        response = self.client.chat.completions.create(
+                            model=current_model,
+                            messages=messages,
+                            max_tokens=self.max_response_tokens,
+                        )
+                        last_error = None
+                        break
+                    except Exception as e:
+                        err_str = str(e)
+                        last_error = e
+                        is_rate_limit = ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower())
+                        retry_delay = 1.5 + (attempt * 2.0)
+                        if is_rate_limit and attempt < max_retries - 1:
+                            self.logger.info(f"⏳ OCR 429 Rate Limit - Đang chờ {retry_delay:.0f}s (lần {attempt+2}/{max_retries})...")
+                            time.sleep(retry_delay)
+                            continue
+                        elif len(candidates) > 1:
+                            next_idx = candidates.index(current_model) + 1
+                            if next_idx < len(candidates):
+                                self.logger.warning(f"⚠️ OCR Model '{current_model}' thất bại ({type(e).__name__}) -> Tự động chuyển sang '{candidates[next_idx]}'...")
+                                break
+                        raise
+                if response is not None:
+                    break
+
+            if response and response.choices and response.choices[0].message.content:
                 full_text = (
                     response.choices[0].message.content.replace("\n", " ").strip()
                 )
@@ -469,13 +542,147 @@ class LLM_OCR(OCRBase):
             self.logger.error(f"OCR error: {e}")
             return f"[ERROR: {type(e).__name__}]"
 
+    def _build_batched_request(
+        self,
+        img: np.ndarray,
+        blk_list: List[TextBlock],
+        prompt: str,
+        return_texts: bool = False
+    ) -> List[str]:
+        """Send ALL cropped text blocks in a SINGLE Gemini Vision request.
+        1 page = 1 request (independent of block count) - Free-Tier Safe."""
+        valid_blks: List[TextBlock] = []
+        crops = []
+        for blk in blk_list:
+            x1, y1, x2, y2 = blk.xyxy
+            if 0 <= x1 < x2 <= img.shape[1] and 0 <= y1 < y2 <= img.shape[0]:
+                crop = img[y1:y2, x1:x2]
+                if crop.size == 0:
+                    continue
+                valid_blks.append(blk)
+                if crop.ndim == 3 and crop.shape[-1] == 4:
+                    crop = cv2.cvtColor(crop, cv2.COLOR_RGBA2RGB)
+                elif crop.ndim == 2:
+                    crop = cv2.cvtColor(crop, cv2.COLOR_GRAY2RGB)
+                _, buffer = cv2.imencode(".jpg", crop)
+                crops.append(base64.b64encode(buffer).decode("utf-8"))
+
+        if not valid_blks:
+            for blk in blk_list:
+                blk.text = ""
+            return [""] * len(blk_list)
+
+        lang_name = self.language
+        prompt_text = (prompt or self.prompt).format(language=lang_name)
+        task_prefix = (
+            "You are batch OCR. The following numbered image snippets each correspond to ONE text block.\n"
+            "Return results EXACTLY as a JSON object mapping each number to its recognized text.\n"
+            'Example: {"1": "Hello world", "2": "NO WAY!"}\n'
+            "Recognize ALL text in each snippet (including stylized SFX/brush lettering). "
+            "Consolidate each snippet's text into a single horizontal line. No explanations.\n"
+            "BATCH INPUT:\n"
+        )
+        parts = [{"type": "text", "text": task_prefix + prompt_text}]
+        for idx, b64 in enumerate(crops):
+            parts.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+            })
+
+        messages = [{"role": "user", "content": parts}]
+        if self.system_prompt:
+            messages.insert(0, {"role": "system", "content": self.system_prompt})
+
+        model_name = self.override_model or self.model
+        if ": " in model_name:
+            model_name = model_name.split(": ", 1)[1]
+
+        candidates = [model_name]
+        if self.provider in ["Google", "Gemini Proxy"]:
+            for m in ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash"]:
+                if m not in candidates:
+                    candidates.append(m)
+
+        api_key_to_use = self._select_api_key()
+        if not api_key_to_use:
+            api_key_to_use = "gemini-proxy-key"
+        if not self.client or self.client.api_key != api_key_to_use:
+            self._initialize_client(api_key_to_use)
+        self._respect_delay()
+
+        max_retries = 3
+        response = None
+        for current_model in candidates:
+            self._respect_model_delay(current_model)
+            for attempt in range(max_retries):
+                try:
+                    self.logger.info(f"🌐 [Gemini OCR Batch] Gửi {len(crops)} khối chữ trong 1 request duy nhất (Model: {current_model})...")
+                    response = self.client.chat.completions.create(
+                        model=current_model,
+                        messages=messages,
+                        max_tokens=self.max_response_tokens,
+                        response_format={"type": "json_object"},
+                    )
+                    break
+                except Exception as e:
+                    err_str = str(e)
+                    is_rate_limit = ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower())
+                    retry_delay = 1.5 + (attempt * 2.0)
+                    if is_rate_limit and attempt < max_retries - 1:
+                        self.logger.info(f"⏳ [Gemini OCR Batch] 429 - Đang chờ {retry_delay:.0f}s (lần {attempt+2}/{max_retries})...")
+                        time.sleep(retry_delay)
+                        continue
+                    elif len(candidates) > 1 and candidates.index(current_model) + 1 < len(candidates):
+                        next_model = candidates[candidates.index(current_model) + 1]
+                        self.logger.warning(f"⚠️ [Gemini OCR Batch] Model '{current_model}' thất bại ({type(e).__name__}) -> chuyển sang '{next_model}'...")
+                        break
+                    self.logger.error(f"[Gemini OCR Batch] Fatal: {type(e).__name__}: {e}")
+                    for blk in valid_blks:
+                        blk.text = []
+                    return [""] * len(valid_blks)
+            if response is not None:
+                break
+
+        results: List[str] = []
+        if response and response.choices and response.choices[0].message.content:
+            raw = response.choices[0].message.content.strip()
+            try:
+                import json as _json
+                start = raw.find("{")
+                end = raw.rfind("}")
+                if start != -1 and end > start:
+                    raw = raw[start:end + 1]
+                data = _json.loads(raw)
+                results = [str(data.get(str(i), "")) for i in range(1, len(valid_blks) + 1)]
+            except Exception:
+                texts = re.findall(r'"(\d+)"\s*:\s*"((?:[^"\\]|\\.)*)"', raw)
+                mapping = {}
+                for tid, ttext in texts:
+                    mapping[int(tid)] = ttext
+                results = [mapping.get(i + 1, "") for i in range(len(valid_blks))]
+        else:
+            results = [""] * len(valid_blks)
+
+        for blk, text in zip(valid_blks, results):
+            blk.text = [text] if text else []
+        return results
+
     def _ocr_blk_list(
         self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs
     ):
+        if len(blk_list) > 1:
+            self._build_batched_request(img, blk_list, kwargs.get("prompt"))
+            return
+
         im_h, im_w = img.shape[:2]
-        for blk in blk_list:
+        for idx, blk in enumerate(blk_list):
             x1, y1, x2, y2 = blk.xyxy
             if 0 <= x1 < x2 <= im_w and 0 <= y1 < y2 <= im_h:
+                if idx > 0:
+                    model_name = self.override_model or self.model
+                    if ": " in model_name:
+                        model_name = model_name.split(": ", 1)[1]
+                    self._respect_model_delay(model_name)
                 cropped_img = img[y1:y2, x1:x2]
                 _, buffer = cv2.imencode(".jpg", cropped_img)
                 img_base64 = base64.b64encode(buffer).decode("utf-8")

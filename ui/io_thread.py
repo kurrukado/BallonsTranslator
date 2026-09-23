@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import os.path as osp
 import traceback
@@ -35,6 +36,8 @@ class ThreadBase(QThread):
                 create_error_dialog(e, self._thread_error_msg, self._thread_exception_type)
         self.job = None
 
+import threading
+
 class ImgSaveThread(ThreadBase):
 
     img_writed = Signal(str)
@@ -44,37 +47,58 @@ class ImgSaveThread(ThreadBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.im_save_list = []
+        self._lock = threading.Lock()
 
-    def saveImg(self, save_path: str, img: QImage, pagename_in_proj: str = '', save_params: dict = None, keep_alpha=False):
-        self.im_save_list.append((save_path, img, pagename_in_proj, save_params, keep_alpha))
-        if self.job is None:
+    def saveImg(self, save_path: str, img, pagename_in_proj: str = '', save_params: dict = None, keep_alpha=False):
+        if img is None:
+            return
+        
+        # Convert QImage/QPixmap to safe numpy ndarray on the GUI thread before enqueuing
+        img_array = None
+        try:
+            if isinstance(img, (QImage, QPixmap)):
+                img_array = pixmap2ndarray(img, keep_alpha=keep_alpha)
+            elif isinstance(img, np.ndarray):
+                img_array = np.ascontiguousarray(img)
+            else:
+                img_array = img
+        except Exception as e:
+            LOGGER.error(f"Failed to convert image before saving to {save_path}: {e}")
+            return
+
+        if img_array is None:
+            return
+
+        with self._lock:
+            self.im_save_list.append((save_path, img_array, pagename_in_proj, save_params or {}))
+
+        if not self.isRunning():
             self.job = self._save_img
             self.start()
 
     def _save_img(self):
         while True:
-            if len(self.im_save_list) == 0:
-                break
-            save_path, img, pagename_in_proj, save_params, keep_alpha = self.im_save_list[0]
-            if save_params is None:
-                save_params = {}
-            if isinstance(img, QImage) or isinstance(img, QPixmap):
-                img = pixmap2ndarray(img, keep_alpha=keep_alpha)
-            imwrite(save_path, img, **save_params)
-            self.img_writed.emit(pagename_in_proj)
-            self.im_save_list.pop(0)
+            item = None
+            with self._lock:
+                if len(self.im_save_list) > 0:
+                    item = self.im_save_list.pop(0)
+                else:
+                    break
+
+            if item is not None:
+                save_path, img_array, pagename_in_proj, save_params = item
+                try:
+                    save_dir = osp.dirname(save_path)
+                    if save_dir and not osp.exists(save_dir):
+                        os.makedirs(save_dir, exist_ok=True)
+                    imwrite(save_path, img_array, **save_params)
+                    self.img_writed.emit(pagename_in_proj)
+                except Exception as e:
+                    LOGGER.error(f"Failed to write image {save_path}: {e}")
 
     def on_exec_failed(self):
-        if len(self.im_save_list) > 0:
-            self.im_save_list.pop(0)
-            if len(self.im_save_list) == 0:
-                self.job = None
-            else:
-                try:
-                    self.job()
-                except Exception as e:
-                    self.on_exec_failed()
-                    create_error_dialog(e, self._thread_error_msg, self._thread_exception_type)
+        with self._lock:
+            self.im_save_list.clear()
 
 
 

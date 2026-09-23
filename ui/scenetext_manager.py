@@ -18,6 +18,7 @@ from utils.fontformat import FontFormat
 from .textedit_commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, RotateItemCommand, TextItemEditCommand, TextEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand, SqueezeCommand
 from .text_panel import FontFormatPanel
 from utils.config import pcfg
+from utils.logger import logger as LOGGER
 from utils import shared
 from utils.imgproc_utils import extract_ballon_region, rotate_polygons, get_block_mask
 from utils.text_processing import seg_text, is_cjk
@@ -414,10 +415,42 @@ class SceneTextManager(QObject):
         if key_event is not None:
             key_event.accept()
 
+    def verify_inpaint_surface(self) -> bool:
+        """
+        Render Layer Segregation: Ensure the rendered Vietnamese text layer NEVER renders
+        until the underlying inpaint surface passes an opacity and completeness verification.
+        """
+        proj = getattr(self.canvas, 'imgtrans_proj', None)
+        if proj is None:
+            return True
+
+        # Check if project has a valid inpaint array
+        inpainted_array = getattr(proj, 'inpainted_array', None)
+        img_array = getattr(proj, 'img_array', None)
+        mask_array = getattr(proj, 'mask_array', None)
+
+        if mask_array is not None and np.any(mask_array > 0):
+            if inpainted_array is None or inpainted_array.size == 0:
+                LOGGER.warning("🛑 [Render Layer Segregation] Inpainted surface incomplete (empty inpainted_array). Blocking text layer render.")
+                return False
+            if img_array is not None and inpainted_array.shape[:2] != img_array.shape[:2]:
+                LOGGER.warning("🛑 [Render Layer Segregation] Inpainted surface dimension mismatch. Blocking text layer render.")
+                return False
+
+        if hasattr(self.canvas, 'inpaintLayer') and self.canvas.inpaintLayer is not None:
+            if self.canvas.inpaintLayer.opacity() <= 0.0:
+                LOGGER.warning("🛑 [Render Layer Segregation] Inpaint layer opacity is 0. Blocking text layer render.")
+                return False
+
+        return True
+
     def setTextEditMode(self, edit: bool = False):
         if edit:
             self.textpanel.show()
-            self.canvas.textLayer.show()
+            if self.verify_inpaint_surface():
+                self.canvas.textLayer.show()
+            else:
+                LOGGER.warning("⚠️ [Render Layer Segregation] Inpaint surface verification failed. Postponing text layer show.")
         else:
             self.txtblkShapeControl.setBlkItem(None)
             self.textpanel.hide()
@@ -438,22 +471,142 @@ class SceneTextManager(QObject):
             self.textEditList.removeWidget(textwidget)
         self.pairwidget_list.clear()
 
-    def updateSceneTextitems(self):
-        self.hovering_transwidget = None
-        self.txtblkShapeControl.setBlkItem(None)
+    def clear(self):
         self.clearSceneTextitems()
-        for textblock in self.imgtrans_proj.current_block_list():
-            if textblock.font_family is None or textblock.font_family.strip() == '':
-                textblock.font_family = self.formatpanel.familybox.currentText()
+
+    def apply_auto_font_to_block(self, textblock: TextBlock):
+        is_dialogue = textblock.is_in_balloon() if hasattr(textblock, 'is_in_balloon') else True
+        emotion = getattr(textblock, 'emotion_tag', 'normal') or 'normal'
+        emotion = str(emotion).lower().strip()
+
+        # Engine-agnostic: áp dụng cho mọi OCR/Inpaint engine, chỉ phụ thuộc background brightness đo được tại thời điểm render.
+        mean_lum = 255.0
+        std_lum = 0.0
+        try:
+            pixmap = None
+            if hasattr(self, 'canvas'):
+                if hasattr(self.canvas, 'inpaintLayer') and self.canvas.inpaintLayer.pixmap() is not None:
+                    pixmap = self.canvas.inpaintLayer.pixmap()
+                elif hasattr(self.canvas, 'baseLayer') and self.canvas.baseLayer.pixmap() is not None:
+                    pixmap = self.canvas.baseLayer.pixmap()
+                elif hasattr(self.canvas, 'originalLayer') and self.canvas.originalLayer.pixmap() is not None:
+                    pixmap = self.canvas.originalLayer.pixmap()
+
+            if pixmap is not None and not pixmap.isNull() and hasattr(textblock, 'xyxy') and len(textblock.xyxy) == 4:
+                x1, y1, x2, y2 = [int(v) for v in textblock.xyxy]
+                pw, ph = pixmap.width(), pixmap.height()
+                rx, ry, rw, rh = max(0, x1), max(0, y1), min(pw - max(0, x1), x2 - x1), min(ph - max(0, y1), y2 - y1)
+                if rw > 4 and rh > 4:
+                    sub_pix = pixmap.copy(rx, ry, rw, rh)
+                    qimg = sub_pix.toImage()
+                    samples = []
+                    step_x = max(1, rw // 10)
+                    step_y = max(1, rh // 10)
+                    for sx in range(0, rw, step_x):
+                        for sy in range(0, rh, step_y):
+                            samples.append(qimg.pixelColor(sx, sy).lightness())
+                    if samples:
+                        mean_lum = float(np.mean(samples))
+                        std_lum = float(np.std(samples))
+        except Exception:
+            pass
+
+        # Step 2: Configure Font Family, Text Color & Stroke Width
+        is_dark_or_textured = (mean_lum < 160) or (std_lum > 35)
+
+        primary_font = "Yuki-CCMarianChurchlandJournal"
+        secondary_font = "Yuki-Ripsnort BB"
+        if shared.CUSTOM_FONTS:
+            marian = [f for f in shared.CUSTOM_FONTS if 'Marian' in f or 'Journal' in f]
+            ripsnort = [f for f in shared.CUSTOM_FONTS if 'Ripsnort' in f]
+            if marian:
+                primary_font = marian[0]
+            else:
+                primary_font = shared.CUSTOM_FONTS[0]
+
+            if ripsnort:
+                secondary_font = ripsnort[0]
+            elif len(shared.CUSTOM_FONTS) > 1:
+                secondary_font = shared.CUSTOM_FONTS[1]
+            else:
+                secondary_font = primary_font
+        elif hasattr(pcfg, 'global_fontformat') and pcfg.global_fontformat.font_family:
+            primary_font = pcfg.global_fontformat.font_family
+            secondary_font = primary_font
+
+        if is_dialogue:
+            textblock.font_family = primary_font
+            textblock.fontformat.font_family = primary_font
+            textblock.fontformat.font_weight = 700
+            textblock.fontformat.bold = True
+            textblock.fontformat.italic = False  # Dialogue and status blocks remain upright
+            textblock.fontformat.frgb = [0, 0, 0]
+            textblock.fontformat.srgb = [255, 255, 255]
+            textblock.fontformat.stroke_width = 0.20 if is_dark_or_textured else 0.10
+            if emotion == 'shout':
+                textblock.fontformat._style_name = "Dialogue (Shout)"
+            elif emotion == 'whisper':
+                textblock.fontformat._style_name = "Dialogue (Whisper)"
+            elif emotion == 'fear':
+                textblock.fontformat.letter_spacing = 1.20
+                textblock.fontformat._style_name = "Dialogue (Fear)"
+            elif emotion == 'surprise':
+                textblock.fontformat._style_name = "Dialogue (Surprise)"
+            else:
+                textblock.fontformat._style_name = "Dialogue"
+        else:
+            # Free text / Narration / SFX outside speech balloons (Secondary font: Yuki-Ripsnort BB)
+            textblock.font_family = secondary_font
+            textblock.fontformat.font_family = secondary_font
+            textblock.fontformat.bold = False
+            textblock.fontformat.italic = False
+            textblock.fontformat.frgb = [0, 0, 0]        # Always BLACK text
+            textblock.fontformat.srgb = [255, 255, 255]  # Always WHITE stroke halo
+
+            # Contrast-Adaptive Stroke Width:
+            # If background is dark (mean_lum < 160) or highly textured/screentones (std_lum > 35) -> THICK WHITE STROKE (0.40)
+            # If background is clean light (mean_lum >= 160 and std_lum <= 35) -> MODERATE WHITE STROKE (0.20)
+            base_stroke = 0.40 if is_dark_or_textured else 0.20
+            textblock.fontformat.stroke_width = base_stroke
+            textblock.fontformat._style_name = f"Narration/SFX ({'Thick' if is_dark_or_textured else 'Thin'} Stroke)"
+
+            LOGGER.info(
+                f"[Contrast Stroke] Free-text: mean_lum={mean_lum:.1f}, std_lum={std_lum:.1f} "
+                f"({'DARK/TEXTURED' if is_dark_or_textured else 'LIGHT'}) -> stroke_width={textblock.fontformat.stroke_width:.2f}"
+            )
+
+    def loadTextBlocks(self, textblock_list: List[TextBlock] = None, apply_auto_font: bool = False):
+        self.clearSceneTextitems()
+        if textblock_list is None:
+            textblock_list = self.imgtrans_proj.current_block_list()
+        
+        # Render Layer Segregation: check inpaint surface readiness
+        inpaint_ready = self.verify_inpaint_surface()
+        if hasattr(self.canvas, 'textLayer') and self.canvas.textLayer is not None:
+            if inpaint_ready and self.canvas.textblock_mode:
+                self.canvas.textLayer.show()
+            elif not inpaint_ready:
+                self.canvas.textLayer.hide()
+
+        for textblock in textblock_list:
+            if apply_auto_font or (not textblock.font_family and (not hasattr(textblock, 'fontformat') or not textblock.fontformat.font_family)):
+                self.apply_auto_font_to_block(textblock)
             blk_item = self.addTextBlock(textblock)
         if self.auto_textlayout_flag:
             self.updateTextBlkList()
+
+    def updateSceneTextitems(self):
+        self.hovering_transwidget = None
+        self.txtblkShapeControl.setBlkItem(None)
+        self.loadTextBlocks()
 
     def addTextBlock(self, blk: Union[TextBlock, TextBlkItem] = None) -> TextBlkItem:
         if isinstance(blk, TextBlkItem):
             blk_item = blk
             blk_item.idx = len(self.textblk_item_list)
         else:
+            if not blk.font_family and (not hasattr(blk, 'fontformat') or not blk.fontformat.font_family):
+                self.apply_auto_font_to_block(blk)
             translation = ''
             if self.auto_textlayout_flag and not blk.vertical:
                 translation = blk.translation
@@ -542,6 +695,8 @@ class SceneTextManager(QObject):
         self.canvas.block_selection_signal = False
         
     def onTextBlkItemSizeChanged(self, idx: int):
+        if not (0 <= idx < len(self.textblk_item_list)):
+            return
         blk_item = self.textblk_item_list[idx]
         if not self.txtblkShapeControl.reshaping:
             if self.txtblkShapeControl.blk_item == blk_item:
@@ -552,25 +707,30 @@ class SceneTextManager(QObject):
         return self.app.clipboard()
 
     def onBlkitemPaste(self, idx: int):
+        if not (0 <= idx < len(self.textblk_item_list)):
+            return
         blk_item = self.textblk_item_list[idx]
         text = self.app_clipborad.text()
         cursor = blk_item.textCursor()
         cursor.insertText(text)
 
     def onTextBlkItemBeginEdit(self, blk_id: int):
+        if not (0 <= blk_id < len(self.textblk_item_list)):
+            return
         blk_item = self.textblk_item_list[blk_id]
         self.txtblkShapeControl.setBlkItem(blk_item)
         self.canvas.editing_textblkitem = blk_item
         self.formatpanel.set_textblk_item(blk_item)
         self.txtblkShapeControl.startEditing()
-        e_trans = self.pairwidget_list[blk_item.idx].e_trans
-        self.changeHoveringWidget(e_trans)
+        if 0 <= getattr(blk_item, 'idx', -1) < len(self.pairwidget_list):
+            e_trans = self.pairwidget_list[blk_item.idx].e_trans
+            self.changeHoveringWidget(e_trans)
 
     def changeHoveringWidget(self, edit: SourceTextEdit):
         if self.hovering_transwidget is not None and self.hovering_transwidget != edit:
             self.hovering_transwidget.setHoverEffect(False)
         self.hovering_transwidget = edit
-        if edit is not None:
+        if edit is not None and 0 <= getattr(edit, 'idx', -1) < len(self.pairwidget_list):
             pw = self.pairwidget_list[edit.idx]
             h = pw.height()
             if shared.USE_PYSIDE6:
@@ -580,17 +740,21 @@ class SceneTextManager(QObject):
             edit.setHoverEffect(True)
 
     def onLeftbuttonPressed(self, blk_id: int):
+        if not (0 <= blk_id < len(self.textblk_item_list)):
+            return
         blk_item = self.textblk_item_list[blk_id]
         self.txtblkShapeControl.setBlkItem(blk_item)
         selections: List[TextBlkItem] = self.canvas.selectedItems()
         if len(selections) > 1:
             for item in selections:
                 item.oldPos = item.pos()
-        self.changeHoveringWidget(self.pairwidget_list[blk_id].e_trans)
+        if 0 <= blk_id < len(self.pairwidget_list):
+            self.changeHoveringWidget(self.pairwidget_list[blk_id].e_trans)
 
     def onTextBlkItemEndEdit(self, blk_id: int):
         self.canvas.editing_textblkitem = None
-        self.textblk_item_list[blk_id].setSelected(True)
+        if 0 <= blk_id < len(self.textblk_item_list):
+            self.textblk_item_list[blk_id].setSelected(True)
         self.txtblkShapeControl.endEditing()
 
     def editingTextItem(self) -> TextBlkItem:
@@ -608,6 +772,8 @@ class SceneTextManager(QObject):
 
     def onTextBlkItemHoverEnter(self, blk_id: int):
         if self.is_editting():
+            return
+        if not (0 <= blk_id < len(self.textblk_item_list)):
             return
         blk_item = self.textblk_item_list[blk_id]
         if not blk_item.hasFocus():
@@ -793,31 +959,60 @@ class SceneTextManager(QObject):
 
         adaptive_fntsize = False
         resize_ratio = 1
+        safe_text_area = max(text_area, 1)
+        safe_max_wl = max(max(wl_list) if len(wl_list) > 0 else 1, 1)
+        safe_sum_wl = max(sum(wl_list), 1)
+
         if self.auto_textlayout_flag and pcfg.let_fntsize_flag == 0 and pcfg.let_autolayout_flag:
             if blkitem.blk.src_is_vertical and blkitem.blk.vertical != blkitem.blk.src_is_vertical:
                 adaptive_fntsize = True
-                area_ratio = ballon_area / text_area
+                area_ratio = ballon_area / safe_text_area
                 ballon_area_thresh = 1.7
                 downscale_constraint = 0.6
-                resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, region_rect [2] / max(wl_list)), downscale_constraint, 1.0)
+                reg_w = region_rect[2] if region_rect is not None and len(region_rect) > 2 else 100
+                resize_ratio = np.clip(min(area_ratio / ballon_area_thresh, reg_w / safe_max_wl), downscale_constraint, 1.0)
 
             else:
                 if not src_is_cjk:
-                    resize_ratio_ballon = max(ballon_area / 1.2 / text_area, 0.7)
+                    resize_ratio_ballon = max(ballon_area / 1.2 / safe_text_area, 0.7)
                     if ref_src_lines:
                         _, src_width = blkitem.blk.normalizd_width_list(normalize=False)
-                        resize_ratio_src = src_width / (sum(wl_list) + max((len(wl_list) - 1 - len(blkitem.blk.lines_array())), 0) * delimiter_len)
+                        denom = safe_sum_wl + max((len(wl_list) - 1 - len(blkitem.blk.lines_array())), 0) * delimiter_len
+                        resize_ratio_src = src_width / max(denom, 1)
                         resize_ratio = min(resize_ratio_ballon, resize_ratio_src)
                     else:
                         resize_ratio = resize_ratio_ballon
                 elif not blkitem.blk.src_is_vertical and ref_src_lines:
                     _, src_width = blkitem.blk.normalizd_width_list(normalize=False)
-                    resize_ratio_src = src_width / (sum(wl_list) + max((len(wl_list) - 1 - len(blkitem.blk.lines_array())), 0) * delimiter_len)
+                    denom = safe_sum_wl + max((len(wl_list) - 1 - len(blkitem.blk.lines_array())), 0) * delimiter_len
+                    resize_ratio_src = src_width / max(denom, 1)
                     resize_ratio = max(resize_ratio_src * 1.5, 0.5)
                 resize_ratio = min(max(resize_ratio, 0.6), 1)
 
+            # Apply Emotion-Adaptive Font Scaling
+            emotion = getattr(blkitem.blk, 'emotion_tag', 'normal') or 'normal'
+            emotion = str(emotion).lower().strip()
+            is_dialogue = blkitem.blk.is_in_balloon() if hasattr(blkitem.blk, 'is_in_balloon') else True
+
+            emotion_scale = 1.0
+            if emotion == 'shout':
+                emotion_scale = 1.20 if is_dialogue else 1.35
+            elif emotion == 'whisper':
+                emotion_scale = 0.85
+            elif emotion == 'fear':
+                emotion_scale = 0.90
+            elif emotion == 'surprise':
+                emotion_scale = 1.10
+
+            if emotion_scale != 1.0:
+                if emotion_scale > 1.0:
+                    safe_cap = min(emotion_scale, max(1.0, ballon_area / (safe_text_area * 1.25)))
+                    resize_ratio *= safe_cap
+                else:
+                    resize_ratio *= emotion_scale
+
         if resize_ratio != 1:
-            new_font_size = blk_font.pointSizeF() * resize_ratio   
+            new_font_size = max(blk_font.pointSizeF() * resize_ratio, 6.0)
             blk_font.setPointSizeF(new_font_size)
             wl_list = (np.array(wl_list, np.float64) * resize_ratio).astype(np.int32).tolist()
             line_height = int(line_height * resize_ratio)
@@ -837,40 +1032,65 @@ class SceneTextManager(QObject):
             centroid = [0, 0]
             abs_centroid = [bounding_rect[0], bounding_rect[1]]
             if len(blkitem.blk) > 0:
-                blkitem.blk.lines[0]
                 abs_centroid = blkitem.blk.lines[0][0]
                 centroid[0] = int(abs_centroid[0] - mask_xyxy[0])
                 centroid[1] = int(abs_centroid[1] - mask_xyxy[1])
 
-        new_text, xywh, start_from_top, adjust_xy = layout_text(
-            blkitem.blk,
-            mask, 
-            mask_xyxy, 
-            centroid, 
-            words, 
-            wl_list, 
-            delimiter, 
-            delimiter_len, 
-            line_height, 
-            0, 
-            max_central_width,
-            src_is_cjk=src_is_cjk,
-            tgt_is_cjk=tgt_is_cjk,
-            ref_src_lines=ref_src_lines
-        )
+        try:
+            new_text, xywh, start_from_top, adjust_xy = layout_text(
+                blkitem.blk,
+                mask, 
+                mask_xyxy, 
+                centroid, 
+                words, 
+                wl_list, 
+                delimiter, 
+                delimiter_len, 
+                line_height, 
+                0, 
+                max_central_width,
+                src_is_cjk=src_is_cjk,
+                tgt_is_cjk=tgt_is_cjk,
+                ref_src_lines=ref_src_lines
+            )
+        except Exception as e:
+            LOGGER.warning(f"layout_text failed: {e}. Falling back to default plain text.")
+            blkitem.setPlainText(text)
+            return
 
         # font size post adjustment
         post_resize_ratio = 1
-        if adaptive_fntsize:
+        if adaptive_fntsize and xywh is not None:
             downscale_constraint = 0.5
-            w = xywh[2]
-            post_resize_ratio = np.clip(max(region_rect[2] / w, downscale_constraint), 0, 1)
+            w = max(xywh[2], 1)
+            reg_w = region_rect[2] if region_rect is not None and len(region_rect) > 2 else w
+            post_resize_ratio = np.clip(max(reg_w / w, downscale_constraint), 0, 1)
             resize_ratio *= post_resize_ratio
 
-        if post_resize_ratio != 1:
+        if post_resize_ratio != 1 and xywh is not None:
             cx, cy = xywh[0] + xywh[2] / 2, xywh[1] + xywh[3] / 2
             w, h = xywh[2] * post_resize_ratio, xywh[3] * post_resize_ratio
             xywh = [int(cx - w / 2), int(cy - h / 2), int(w), int(h)]
+
+        # Bounding Box Fit: Auto-clamp bounding boxes within bubble contours with safety inner padding
+        # padding = (box_width * 0.05, box_height * 0.05) to eliminate overflow and border overlapping
+        if xywh is not None and bounding_rect is not None and len(bounding_rect) >= 4:
+            bw = bounding_rect[2]
+            bh = bounding_rect[3]
+            pad_w = int(round(bw * 0.05))
+            pad_h = int(round(bh * 0.05))
+
+            min_x = bounding_rect[0] + pad_w
+            max_x = bounding_rect[0] + bw - pad_w
+            min_y = bounding_rect[1] + pad_h
+            max_y = bounding_rect[1] + bh - pad_h
+
+            x, y, w, h = xywh
+            safe_w = min(w, max(10, bw - 2 * pad_w))
+            safe_h = min(h, max(10, bh - 2 * pad_h))
+            clamped_x = max(min_x, min(x, max_x - safe_w))
+            clamped_y = max(min_y, min(y, max_y - safe_h))
+            xywh = [int(clamped_x), int(clamped_y), int(safe_w), int(safe_h)]
 
         if resize_ratio != 1:
             new_font_size = blkitem.font().pointSizeF() * resize_ratio
@@ -1084,14 +1304,26 @@ class SceneTextManager(QObject):
         if cbl is None:
             return
         cbl.clear()
-        for blk_item, trans_pair in zip(self.textblk_item_list, self.pairwidget_list):
+        num_pairs = len(self.pairwidget_list)
+        for i, blk_item in enumerate(self.textblk_item_list):
+            trans_pair = self.pairwidget_list[i] if i < num_pairs else None
             if not blk_item.document().isEmpty():
                 blk_item.blk.rich_text = blk_item.toHtml()
-                blk_item.blk.translation = blk_item.toPlainText()
+                text = blk_item.toPlainText()
+                if pcfg.let_uppercase_flag:
+                    text = text.upper()
+                blk_item.blk.translation = text
+            elif trans_pair and hasattr(trans_pair, 'e_trans') and trans_pair.e_trans.toPlainText().strip():
+                text = trans_pair.e_trans.toPlainText()
+                if pcfg.let_uppercase_flag:
+                    text = text.upper()
+                blk_item.blk.translation = text
+                blk_item.setPlainText(text)
             else:
                 blk_item.blk.rich_text = ''
                 blk_item.blk.translation = ''
-            blk_item.blk.text = [trans_pair.e_source.toPlainText()]
+            if trans_pair and hasattr(trans_pair, 'e_source'):
+                blk_item.blk.text = [trans_pair.e_source.toPlainText()]
             blk_item.blk._bounding_rect = blk_item.absBoundingRect()
             blk_item.updateBlkFormat()
             cbl.append(blk_item.blk)

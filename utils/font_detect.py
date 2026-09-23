@@ -2,6 +2,7 @@ import os
 import hashlib
 import logging
 import sys
+import pickle
 import torch
 
 from typing import Tuple
@@ -85,6 +86,22 @@ def _clean_state_dict_keys(state_dict: Dict[str, torch.Tensor]) -> Dict[str, tor
         new_sd[new_k] = v
     return new_sd
 
+class _FontStub:
+    """Lightweight stub to deserialize font objects without requiring external font_dataset module."""
+    def __init__(self, *args, **kwargs):
+        pass
+    def __setstate__(self, state):
+        if isinstance(state, dict):
+            self.__dict__.update(state)
+        elif isinstance(state, tuple):
+            self.state = state
+
+class _FontCacheUnpickler(pickle.Unpickler):
+    def find_class(self, module, name):
+        if module.startswith('font_dataset'):
+            return _FontStub
+        return super().find_class(module, name)
+
 def prepare_fonts(cache_path: str = None):
     """Load font list from cache file"""
     try:
@@ -93,8 +110,7 @@ def prepare_fonts(cache_path: str = None):
                 sys.path.insert(0, YUZUMARKER_DIR)
             
             with open(cache_path, 'rb') as f:
-                import pickle
-                font_objects = pickle.load(f)
+                font_objects = _FontCacheUnpickler(f).load()
                 
                 # Convert font objects to their path strings
                 font_list = []
@@ -102,12 +118,9 @@ def prepare_fonts(cache_path: str = None):
                     if hasattr(font_obj, 'path'):
                         font_list.append(font_obj.path)
                     else:
-                        # Fallback: if the object doesn't have path attribute, keep the original object
                         font_list.append(font_obj)
                 
                 return font_list
-        else:
-            pass
     except FileNotFoundError as e:
         logger.warning(f"Font cache file not found at {cache_path}: {e}")
     except PermissionError as e:

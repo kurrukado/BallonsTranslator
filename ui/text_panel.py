@@ -217,19 +217,27 @@ class FontFamilyComboBox(QFontComboBox):
         self.setLineEdit(lineedit)
         self.emit_if_focused = emit_if_focused
         self.return_pressed = False
+        if shared.CUSTOM_FONTS:
+            self.update_font_list(shared.CUSTOM_FONTS)
         
     def apply_fontfamily(self):
-        ffamily = self.currentFont().family()
-        if ffamily in shared.FONT_FAMILIES:
+        ffamily = self.currentText()
+        if ffamily:
             self.param_changed.emit('font_family', ffamily)
 
     def update_font_list(self, font_list):
-        self.currentFontChanged.disconnect(self.on_fontfamily_changed)
-        current_font = self.currentFont().family()
+        try:
+            self.currentFontChanged.disconnect(self.on_fontfamily_changed)
+        except Exception:
+            pass
+        current_font = self.currentText()
         self.clear()
-        self.addItems(font_list)
-        self.addItems([current_font])
-        self.setCurrentText(current_font)
+        unique_fonts = list(dict.fromkeys(font_list))
+        self.addItems(unique_fonts)
+        if current_font in unique_fonts:
+            self.setCurrentText(current_font)
+        elif unique_fonts:
+            self.setCurrentText(unique_fonts[0])
         self.currentFontChanged.connect(self.on_fontfamily_changed)
 
     def on_return_pressed(self):
@@ -407,12 +415,34 @@ class FontFormatPanel(Widget):
         hl4.setStretch(1, 1)
         hl4.setStretch(2, 1)
         hl4.setContentsMargins(0, 12, 0, 0)
-        hl4.setSpacing(0)
+        self.apply_all_btn = QPushButton(self.tr("🔄 Áp dụng font cho tất cả trang"))
+        self.apply_all_btn.setObjectName("ApplyAllPagesBtn")
+        self.apply_all_btn.setStyleSheet("""
+            QPushButton#ApplyAllPagesBtn {
+                background-color: #1e93e5;
+                color: #ffffff;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 11px;
+                font-weight: bold;
+                border: none;
+                margin-top: 6px;
+                margin-bottom: 2px;
+            }
+            QPushButton#ApplyAllPagesBtn:hover {
+                background-color: #1877be;
+            }
+            QPushButton#ApplyAllPagesBtn:pressed {
+                background-color: #125b93;
+            }
+        """)
+        self.apply_all_btn.setToolTip(self.tr("Áp dụng font đang chọn cho toàn bộ tất cả các trang đã dịch trong dự án"))
 
         self.vlayout.addLayout(vl0)
         self.vlayout.addLayout(hl1)
         self.vlayout.addLayout(hl2)
         self.vlayout.addLayout(hl3)
+        self.vlayout.addWidget(self.apply_all_btn)
         self.vlayout.addLayout(hl4)
         self.vlayout.setContentsMargins(0, 0, 7, 0)
         self.vlayout.setSpacing(0)
