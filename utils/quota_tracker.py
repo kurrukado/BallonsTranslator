@@ -6,6 +6,13 @@ import datetime
 import threading
 from typing import Dict, List, Optional, Tuple, Any
 
+try:
+    import zoneinfo
+    PT_TZ = zoneinfo.ZoneInfo("America/Los_Angeles")
+except Exception:
+    # ponytail: no zoneinfo, DST off by 1hr
+    PT_TZ = datetime.timezone(datetime.timedelta(hours=-8))
+
 # Root directory
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CACHE_DIR = os.path.join(ROOT_DIR, "cache")
@@ -104,8 +111,7 @@ class QuotaTracker:
 
     def _get_current_pt_date(self) -> str:
         """Get current date in US Pacific Time (UTC-8 / UTC-7) where AI Studio quotas reset at 00:00."""
-        pt_tz = datetime.timezone(datetime.timedelta(hours=-8))
-        return datetime.datetime.now(pt_tz).strftime("%Y-%m-%d")
+        return datetime.datetime.now(PT_TZ).strftime("%Y-%m-%d")
 
     def _check_and_reset_daily(self):
         """Check if day boundary in Pacific Time has rolled over, and reset counts if needed."""
@@ -293,8 +299,7 @@ class QuotaTracker:
 
     def get_reset_timing_info(self) -> str:
         """Returns human-readable explanation of when quotas will reset."""
-        pt_tz = datetime.timezone(datetime.timedelta(hours=-8))
-        now_pt = datetime.datetime.now(pt_tz)
+        now_pt = datetime.datetime.now(PT_TZ)
         tomorrow_pt = (now_pt + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         diff_hours = (tomorrow_pt - now_pt).total_seconds() / 3600.0
         return f"00:00 Pacific Time (~{diff_hours:.1f} giờ nữa / 08:00 UTC)"
