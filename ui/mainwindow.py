@@ -1742,7 +1742,7 @@ class MainWindow(mainwindow_cls):
                 if not pcfg.module.keep_exist_textlines:
                     if not pages_to_process:
                         # 没有指定pages_to_process，清空所有页面
-                        self.imgtrans_proj.pages[page].clear()
+                        self.imgtrans_proj.pages[page] = []
         else:
             self.st_manager.updateTextBlkList()
             textblk: TextBlock = None

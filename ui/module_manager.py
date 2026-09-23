@@ -516,7 +516,7 @@ class ImgtransThread(QThread):
                     existed_mask = self.imgtrans_proj.load_mask_by_imgname(imgname)
                     if existed_mask is not None:
                         mask = np.bitwise_or(mask, existed_mask)
-                self.imgtrans_proj.pages[imgname] = blk_list
+                self.imgtrans_proj.pages[imgname] = list(blk_list)
 
                 if mask is not None and not cfg_module.enable_ocr:
                     self.imgtrans_proj.save_mask(imgname, mask)
@@ -526,14 +526,31 @@ class ImgtransThread(QThread):
                 self.update_detect_progress.emit(self.detect_counter)
 
             if blk_list is None:
-                blk_list = self.imgtrans_proj.pages[imgname] if imgname in self.imgtrans_proj.pages else []
+                blk_list = list(self.imgtrans_proj.pages[imgname]) if imgname in self.imgtrans_proj.pages else []
 
             detected_count = len(blk_list) if blk_list is not None else (len(self.imgtrans_proj.pages[imgname]) if imgname in self.imgtrans_proj.pages else 0)
+
+            # Check for cancellation before OCR
+            if self.stop_requested or (self.active_job_id != current_job_id):
+                LOGGER.warning(f"🛑 [JOB {current_job_id[:8]}] Pipeline stopped or superseded before OCR on '{imgname}'")
+                if translation_proxy:
+                    translation_proxy.cancel_session()
+                self.pipeline_stopped.emit()
+                return
 
             if cfg_module.enable_ocr:
                 LOGGER.info(f"📖 [JOB {current_job_id[:8]}] OCR_RUNNING: Đang nhận diện ký tự ({len(blk_list)} khối)...")
                 try:
                     self.ocr.run_ocr(img, blk_list)
+
+                    # Check for cancellation during/after OCR
+                    if self.stop_requested or (self.active_job_id != current_job_id):
+                        LOGGER.warning(f"🛑 [JOB {current_job_id[:8]}] Pipeline stopped or superseded during OCR on '{imgname}'")
+                        if translation_proxy:
+                            translation_proxy.cancel_session()
+                        self.pipeline_stopped.emit()
+                        return
+
                     ocr_valid_count = sum(1 for b in blk_list if b.get_text() and b.get_text().strip())
                     LOGGER.info(f"✓ [JOB {current_job_id[:8]}] OCR_VALIDATED: Nhận diện hoàn tất {len(blk_list)}/{detected_count} khối thoại (Không rỗng: {ocr_valid_count}/{detected_count}).")
                     
@@ -542,6 +559,12 @@ class ImgtransThread(QThread):
                         LOGGER.error(f"❌ [OCR INTEGRITY ERROR] Detected {detected_count} boxes but OCR yielded {len(blk_list)} blocks on '{imgname}'!")
                         raise RuntimeError(f"OCR Integrity Error: Expected {detected_count} blocks, got {len(blk_list)} on '{imgname}'")
                 except Exception as e:
+                    if self.stop_requested or (self.active_job_id != current_job_id):
+                        LOGGER.warning(f"🛑 [JOB {current_job_id[:8]}] Pipeline stopped or superseded on '{imgname}' (suppressing error dialog)")
+                        if translation_proxy:
+                            translation_proxy.cancel_session()
+                        self.pipeline_stopped.emit()
+                        return
                     create_error_dialog(e, self.tr('OCR Failed.'), 'OCRFailed')
                     if translation_proxy:
                         p_idx = self.imgtrans_proj.pagename2idx(imgname)
@@ -590,6 +613,14 @@ class ImgtransThread(QThread):
                 self.imgtrans_proj.save_mask(imgname, mask)
                 need_save_mask = False
 
+            # Check for cancellation before inpainting
+            if self.stop_requested or (self.active_job_id != current_job_id):
+                LOGGER.warning(f"🛑 [JOB {current_job_id[:8]}] Pipeline stopped or superseded before inpaint on '{imgname}'")
+                if translation_proxy:
+                    translation_proxy.cancel_session()
+                self.pipeline_stopped.emit()
+                return
+
             if cfg_module.enable_inpaint:
                 LOGGER.info(f"🎨 [JOB {current_job_id[:8]}] INPAINTING: Đang xóa chữ và khôi phục nền ảnh...")
                 if mask is None:
@@ -601,6 +632,12 @@ class ImgtransThread(QThread):
                         self.imgtrans_proj.save_inpainted(imgname, inpainted)
                         LOGGER.info(f"✓ [JOB {current_job_id[:8]}] INPAINT_VALIDATED: Khôi phục nền hoàn tất.")
                     except Exception as e:
+                        if self.stop_requested or (self.active_job_id != current_job_id):
+                            LOGGER.warning(f"🛑 [JOB {current_job_id[:8]}] Pipeline stopped or superseded during inpaint on '{imgname}'")
+                            if translation_proxy:
+                                translation_proxy.cancel_session()
+                            self.pipeline_stopped.emit()
+                            return
                         create_error_dialog(e, self.tr('Inpainting Failed.'), 'InpaintFailed')
                         if translation_proxy:
                             p_idx = self.imgtrans_proj.pagename2idx(imgname)
@@ -609,6 +646,14 @@ class ImgtransThread(QThread):
                 self.inpaint_counter += 1
                 self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_INPAINT)
                 self.update_inpaint_progress.emit(self.inpaint_counter)
+
+            # Check for cancellation before translation
+            if self.stop_requested or (self.active_job_id != current_job_id):
+                LOGGER.warning(f"🛑 [JOB {current_job_id[:8]}] Pipeline stopped or superseded before translation on '{imgname}'")
+                if translation_proxy:
+                    translation_proxy.cancel_session()
+                self.pipeline_stopped.emit()
+                return
 
             if cfg_module.enable_translate:
                 if use_chapter_batch and translation_proxy is not None:
