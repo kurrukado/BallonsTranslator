@@ -41,6 +41,9 @@
         - **4. `gemini-3.5-flash`** (Ưu tiên số 4): Dự phòng chất lượng cao. (20 RPD, 5 RPM).
         - **5. `gemini-3.5-flash-lite`** (Ưu tiên số 5 - High RPD Fallback): Dự phòng khi các model Flash cạn quota ngày (500 RPD, 15 RPM).
         - **Loại trừ hoàn toàn (Blacklist/Removed)**: `gemini-2.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-3-flash`, `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-3.1-pro`.
+      - **Scanlation Team Localization Persona (Phong Cách Nhóm Dịch Lầy Lội / Mặn Mà & Tự Động Khóa Xưng Hô Zero-Config)**:
+        - Loại bỏ triệt để văn phong dịch máy khô cứng; câu từ cực kỳ tự nhiên, hóm hỉnh, mặn mà và bựa đúng lúc như phong cách các nhóm dịch truyện tranh nổi tiếng.
+        - **Zero-Config Role & Pronoun Inference**: Tự động suy luận vai vế nhân vật (vợ chồng / người yêu $\rightarrow$ Anh - Em; bạn bè chí cốt $\rightarrow$ Mày - Tao / Cậu - Tớ; độc thoại $\rightarrow$ tự vấn; đối thủ $\rightarrow$ Mày - Tao / Ngươi - Ta; tình huống bất lực / tấu hài $\rightarrow$ chêm khẩu ngữ biểu cảm tự nhiên: *toang rồi, ối dồi ôi, hết nước chấm, vãi chưởng*).
       - **Proactive RPM Throttling**: Chủ động giãn cách các lượt gọi liên tiếp ($60/\text{RPM} \times 1.05$) chống lỗi 429 triệt để.
       - **Safe Resume Checkpoint**: Tự động lưu checkpoint tiến độ vào `cache/translation_resume_state.json` khi toàn bộ model cạn RPD trong ngày.
    5. **Auto-Typesetting & Emotion-Adaptive 2-Font System**:
@@ -338,6 +341,25 @@ flowchart TD
    - Hệ thống tự động tính $\text{interval} = (60 / \text{RPM}) \times 1.05$ và chủ động chờ giữa các request liên tiếp tới cùng 1 model ($4.20\text{s}$ cho RPM 15, $12.60\text{s}$ cho RPM 5), triệt tiêu lỗi HTTP 429 do spam nhanh.
 4. **Dừng An Toàn & Lưu Resume Checkpoint**:
    - Khi cả 2 Tier cạn RPD, pipeline dừng ngay lập tức không lặp vô hạn, lưu tiến độ vào [`cache/translation_resume_state.json`](file:///d:/BallonsTranslator/cache/translation_resume_state.json) kèm thông báo thời gian mở lại quota.
+
+### 4.8. Động Cơ Bản Địa Hóa Scanlation Chuyên Nghiệp (Phong Cách Nhóm Dịch Lầy Lội / Mặn Mà & Tự Động Khóa Xưng Hô Zero-Config)
+1. **Sứ Mệnh Bản Địa Hóa & Xóa Bỏ Văn Mẫu Dịch Máy (Zero Machine Slop)**:
+   - Thay vì dịch thô từ điển hoặc văn phong cứng nhắc của Google Translate, hệ thống được cấu hình theo nhân cách **Dịch giả Scanlation Tiếng Việt hàng đầu**.
+   - Ngôn từ tự nhiên, lầy lội, hài hước, mặn mà và bựa đúng lúc, bắt trọn tinh thần các bản dịch nổi tiếng trong cộng đồng truyện tranh Việt Nam (NetTruyen, CuuTruyen, BlogTruyen).
+2. **Cơ Chế Tự Động Suy Luận Vai Vế & Đại Từ (Zero-Config Role & Pronoun Inference)**:
+   - Người dùng không cần mất công thiết lập danh sách nhân vật cho từng bộ truyện; mô hình tự động phân tích ngữ cảnh và động thái giao tiếp:
+     - **Vợ chồng / Cặp đôi / Romance**: BẮT BUỘC xưng hô `Anh - Em` (hoặc gọi tên thân mật), ngọt ngào, trêu ghẹo duyên dáng. Triệt tiêu hoàn toàn xưng hô xa lạ `tớ - cậu` hay `tôi - cô` trong bối cảnh tình cảm/hôn nhân.
+     - **Bạn bè chí cốt / Đồng trang lứa lầy lội**: Linh hoạt `mày - tao` (khi cà khịa, chửi đùa) hoặc `cậu - tớ / mình` (thân thiện).
+     - **Tình huống bất lực / Cáu gắt / Tấu hài**: Tự nhiên chêm khẩu ngữ biểu cảm (`toang rồi`, `ối dồi ôi`, `chết dở`, `vãi chưởng`, `ảo ma`, `mất mặt ghê`, `hết nước chấm`, `bó tay`).
+     - **Độc thoại nội tâm (THOUGHT)**: Tự vấn tự nhiên (`mình...`, `quái lạ...`).
+     - **Chiến đấu / Kẻ thù**: `Mày - Tao`, `Ngươi - Ta`, `Tên khốn`.
+     - **Cổ trang / Kiếm hiệp**: `Huynh - Đệ`, `Bổn tọa`, `Tiểu thư`, `Công tử`.
+3. **Trợ Từ Khẩu Ngữ Đời Thường & Chơi Chữ Thoát Ý**:
+   - Sử dụng linh hoạt trợ từ cảm thán tiếng Việt: `nè`, `cơ chứ`, `chứ lị`, `đấy nhé`, `ơi là trời`, `nhen`, `chứ sao`.
+   - Dịch thoát ý câu đùa, thành ngữ, chơi chữ sang tiếng lóng/khẩu ngữ tương đương của giới trẻ Việt Nam.
+4. **Bảo Toàn Nghiêm Ngặt 1:1 ID & Cốt Truyện Gốc**:
+   - Hài hước và lầy lội nhưng tuyệt đối không bịa đặt làm lệch hướng cốt truyện chính; bảo toàn 1:1 ID thoại và JSON schema chuẩn xác.
+   - **Quy tắc dấu câu Manga**: Tuyệt đối không để dấu chấm đơn (`.`) ở cuối câu thoại trong bong bóng (trừ ba chấm `...` hoặc viết tắt).
 
 ---
 
