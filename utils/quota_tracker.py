@@ -179,8 +179,10 @@ class QuotaTracker:
                         for k, v in self.profiles.items()
                     }
                 }
-                with open(QUOTA_STATE_FILE, "w", encoding="utf-8") as f:
+                tmp_path = QUOTA_STATE_FILE + ".tmp"
+                with open(tmp_path, "w", encoding="utf-8") as f:
                     json.dump(payload, f, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, QUOTA_STATE_FILE)
             except Exception:
                 pass
 
@@ -319,8 +321,10 @@ class QuotaTracker:
                 },
                 "completed_results": results
             }
-            with open(RESUME_STATE_FILE, "w", encoding="utf-8") as f:
+            tmp_path = RESUME_STATE_FILE + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(checkpoint, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, RESUME_STATE_FILE)
             return RESUME_STATE_FILE
 
 
