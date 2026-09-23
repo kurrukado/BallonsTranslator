@@ -347,22 +347,15 @@ func modelsHandler(w http.ResponseWriter, r *http.Request) {
 	setCORS(w)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"object": "list",
-		"data": []map[string]interface{}{
-			// Gemini 2.5 family (free tier)
-			{"id": "gemini-2.5-pro", "object": "model", "owned_by": "google"},
-			{"id": "gemini-2.5-flash", "object": "model", "owned_by": "google"},
-			{"id": "gemini-2.5-flash-lite", "object": "model", "owned_by": "google"},
-			{"id": "gemini-2.5-flash-lite-preview-06-17", "object": "model", "owned_by": "google"},
-			// Gemini 2.0 family (free tier)
+			// Gemini 3.x family (free tier)
+			{"id": "gemini-3.8-flash", "object": "model", "owned_by": "google"},
+			{"id": "gemini-3.7-flash", "object": "model", "owned_by": "google"},
+			{"id": "gemini-3.6-flash", "object": "model", "owned_by": "google"},
+			{"id": "gemini-3.5-flash", "object": "model", "owned_by": "google"},
+			{"id": "gemini-3.5-flash-lite", "object": "model", "owned_by": "google"},
+			// Legacy models
 			{"id": "gemini-2.0-flash", "object": "model", "owned_by": "google"},
-			{"id": "gemini-2.0-flash-lite", "object": "model", "owned_by": "google"},
-			// Gemini 1.5 family (free tier)
 			{"id": "gemini-1.5-flash", "object": "model", "owned_by": "google"},
-			{"id": "gemini-1.5-flash-8b", "object": "model", "owned_by": "google"},
-			{"id": "gemini-1.5-pro", "object": "model", "owned_by": "google"},
-			// Preview models (free tier)
-			{"id": "gemini-3-flash-preview", "object": "model", "owned_by": "google"},
-			{"id": "gemini-3.1-flash-lite-preview", "object": "model", "owned_by": "google"},
 		},
 	})
 }

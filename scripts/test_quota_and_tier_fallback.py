@@ -16,20 +16,24 @@ def test_quota_tracker_unit():
     print("🧪 1. TESTING QUOTA TRACKER UNIT & TIER ORDER")
     print("=" * 80)
 
-    # Clear spurious 429 entries for 3.1 and 3.5 flash-lite
-    QUOTA_TRACKER.exhausted_today.pop("gemini-3.5-flash-lite", None)
-    QUOTA_TRACKER.exhausted_today.pop("gemini-3.1-flash-lite", None)
+    # Clear spurious entries
+    QUOTA_TRACKER.exhausted_today.clear()
     QUOTA_TRACKER._save_state()
 
-    # Verify Tier 1 models are prioritized
-    candidates = QUOTA_TRACKER.get_candidate_models(preferred_model="gemini-3.5-flash-lite")
+    # Verify priority models
+    candidates = QUOTA_TRACKER.get_candidate_models(preferred_model="gemini-3.8-flash")
     print(f"Candidate models for standard batch: {candidates}")
-    assert candidates[0] == "gemini-3.5-flash-lite", f"Expected gemini-3.5-flash-lite first, got {candidates[0]}"
-    assert "gemini-3.1-flash-lite" in candidates, "Expected gemini-3.1-flash-lite in Tier 1 candidates"
+    assert candidates[0] == "gemini-3.8-flash", f"Expected gemini-3.8-flash first, got {candidates[0]}"
+    assert "gemini-3.7-flash" in candidates, "Expected gemini-3.7-flash in candidates"
+    assert "gemini-3.6-flash" in candidates, "Expected gemini-3.6-flash in candidates"
+    assert "gemini-3.5-flash" in candidates, "Expected gemini-3.5-flash in candidates"
+    assert "gemini-3.5-flash-lite" in candidates, "Expected gemini-3.5-flash-lite in candidates"
     
     # Verify blacklisted models are not included
-    assert "gemini-2.5-pro" not in candidates, "gemini-2.5-pro must be excluded (RPD 0)"
-    assert "gemini-2-flash" not in candidates, "gemini-2-flash must be excluded (RPD 0)"
+    assert "gemini-2.5-pro" not in candidates, "gemini-2.5-pro must be excluded"
+    assert "gemini-3.1-flash-lite" not in candidates, "gemini-3.1-flash-lite must be excluded"
+    assert "gemini-2.5-flash-lite" not in candidates, "gemini-2.5-flash-lite must be excluded"
+    assert "gemini-3-flash" not in candidates, "gemini-3-flash must be excluded"
 
     print("✓ Model tier ordering and blacklist filtering verified.")
 

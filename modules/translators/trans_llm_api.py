@@ -102,12 +102,14 @@ class LLM_API_Translator(BaseTranslator):
         "model": {
             "type": "selector",
             "options": [
-                "gemini-3.5-flash-lite",
+                "gemini-3.8-flash",
                 "gemini-3.7-flash",
                 "gemini-3.6-flash",
+                "gemini-3.5-flash",
+                "gemini-3.5-flash-lite",
             ],
-            "value": "gemini-3.5-flash-lite",
-            "description": "Select the Gemini model for translation (Primary: gemini-3.5-flash-lite).",
+            "value": "gemini-3.8-flash",
+            "description": "Select the Gemini model for translation (Primary: gemini-3.8-flash).",
         },
         "override model": {
             "value": "",
@@ -251,13 +253,11 @@ class LLM_API_Translator(BaseTranslator):
         self.key_usage = {}
         self._model_last_request_time: Dict[str, float] = {}
         self.MODEL_RPM_LIMITS: Dict[str, int] = {
-            "gemini-3.5-flash-lite": 15,
-            "gemini-3.1-flash-lite": 15,
-            "gemini-2.5-flash-lite": 15,
-            "gemini-3.5-flash": 5,
-            "gemini-2.5-flash": 5,
-            "gemini-3.6-flash": 5,
+            "gemini-3.8-flash": 5,
             "gemini-3.7-flash": 5,
+            "gemini-3.6-flash": 5,
+            "gemini-3.5-flash": 5,
+            "gemini-3.5-flash-lite": 15,
         }
         self.client = None
         self._http_client: Optional[httpx.Client] = None
@@ -271,7 +271,7 @@ class LLM_API_Translator(BaseTranslator):
 
     def _normalize_model(self, model: str) -> str:
         if not model:
-            return "gemini-3.5-flash-lite"
+            return "gemini-3.8-flash"
         m = model.strip()
         if ": " in m:
             m = m.split(": ", 1)[1]
@@ -746,22 +746,18 @@ class LLM_API_Translator(BaseTranslator):
         completion = None
         retry_after_sec = 60
 
-        # Fallback Chain in exact Free Tier quota priority order:
-        # 1. gemini-3.5-flash-lite (Highest RPM/RPD free tier quota: 15 RPM / 500 RPD)
-        # 2. gemini-3.5-flash (5 RPM / 20 RPD)
-        # 3. gemini-3.1-flash-lite (15 RPM / 500 RPD)
-        # 4. gemini-2.5-flash-lite (15 RPM / 500 RPD)
-        # 5. gemini-2.5-flash (5 RPM / 20 RPD)
-        # 6. gemini-3.6-flash (5 RPM / 20 RPD)
-        # 7. gemini-3.7-flash (5 RPM / 20 RPD)
+        # Fallback Chain in exact Free Tier priority order:
+        # 1. gemini-3.8-flash (Top quality / 5 RPM / 20 RPD)
+        # 2. gemini-3.7-flash (5 RPM / 20 RPD)
+        # 3. gemini-3.6-flash (5 RPM / 20 RPD)
+        # 4. gemini-3.5-flash (5 RPM / 20 RPD)
+        # 5. gemini-3.5-flash-lite (High-RPD fallback / 15 RPM / 500 RPD)
         FALLBACK_CHAIN = [
-            "gemini-3.5-flash-lite",
-            "gemini-3.5-flash",
-            "gemini-3.1-flash-lite",
-            "gemini-2.5-flash-lite",
-            "gemini-2.5-flash",
-            "gemini-3.6-flash",
+            "gemini-3.8-flash",
             "gemini-3.7-flash",
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-3.5-flash-lite",
         ]
 
         if self.provider in ["Gemini Proxy", "Google"]:

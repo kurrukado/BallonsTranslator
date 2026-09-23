@@ -15,75 +15,51 @@ RESUME_STATE_FILE = os.path.join(CACHE_DIR, "translation_resume_state.json")
 # Google AI Studio Free Tier Quota Definitions
 # Reference limits based on real measured AI Studio Free Tier specifications
 DEFAULT_QUOTA_PROFILES = {
-    # 1. PRIMARY GROUP (High RPD - Flash Lite): Primary workhorses for chapter batching
-    "gemini-3.1-flash-lite": {
-        "rpm": 15,
-        "tpm": 250000,
-        "rpd": 500,
-        "tier": "primary",
-        "context_window": 1048576,
-        "daily_budget": 500,
-    },
-    "gemini-3.5-flash-lite": {
-        "rpm": 15,
-        "tpm": 250000,
-        "rpd": 500,
-        "tier": "primary",
-        "context_window": 1048576,
-        "daily_budget": 500,
-    },
-    "gemini-2.5-flash-lite": {
-        "rpm": 10,
+    # 1. HIGH-INTELLIGENCE FLASH GROUP (Top Priority - Scanlation Quality & Nuance):
+    "gemini-3.8-flash": {
+        "rpm": 5,
         "tpm": 250000,
         "rpd": 20,
         "tier": "primary",
         "context_window": 1048576,
         "daily_budget": 20,
     },
-    # 2. RESERVE GROUP (Low RPD / Large Context): Emergency fallback & large payload reserve
-    "gemini-3.5-flash": {
+    "gemini-3.7-flash": {
         "rpm": 5,
         "tpm": 250000,
         "rpd": 20,
-        "tier": "reserve",
+        "tier": "primary",
         "context_window": 1048576,
-        "daily_budget": 10,  # Safety budget to avoid exhausting RPD in one session
+        "daily_budget": 20,
     },
     "gemini-3.6-flash": {
         "rpm": 5,
         "tpm": 250000,
         "rpd": 20,
-        "tier": "reserve",
+        "tier": "primary",
         "context_window": 1048576,
-        "daily_budget": 10,
+        "daily_budget": 20,
     },
-    "gemini-3.7-flash": {
+    "gemini-3.5-flash": {
         "rpm": 5,
         "tpm": 250000,
         "rpd": 20,
-        "tier": "reserve",
+        "tier": "primary",
         "context_window": 1048576,
-        "daily_budget": 10,
+        "daily_budget": 20,
     },
-    "gemini-3-flash": {
-        "rpm": 5,
+    # 2. HIGH-CAPACITY FALLBACK GROUP (Reserve - High RPD Flash Lite):
+    "gemini-3.5-flash-lite": {
+        "rpm": 15,
         "tpm": 250000,
-        "rpd": 20,
+        "rpd": 500,
         "tier": "reserve",
         "context_window": 1048576,
-        "daily_budget": 10,
-    },
-    "gemini-2.5-flash": {
-        "rpm": 5,
-        "tpm": 250000,
-        "rpd": 20,
-        "tier": "reserve",
-        "context_window": 1048576,
-        "daily_budget": 10,
+        "daily_budget": 500,
     },
 }
 
-# Explicitly Blacklisted / Unavailable models (RPD 0)
+# Explicitly Blacklisted / Removed models
 BLACKLISTED_MODELS = {
     "gemini-2.5-pro",
     "gemini-3.1-pro",
@@ -91,6 +67,10 @@ BLACKLISTED_MODELS = {
     "gemini-2-flash-lite",
     "gemini-pro",
     "gemini-1.5-pro",
+    "gemini-2.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3-flash",
+    "gemini-2.5-flash",
 }
 
 class QuotaTracker:
@@ -138,7 +118,7 @@ class QuotaTracker:
 
     def _normalize_model_name(self, model: str) -> str:
         if not model:
-            return "gemini-3.5-flash-lite"
+            return "gemini-3.8-flash"
         m = model.strip()
         if ": " in m:
             m = m.split(": ", 1)[1]
@@ -272,38 +252,33 @@ class QuotaTracker:
 
     def get_candidate_models(self, preferred_model: Optional[str] = None, estimated_tokens: int = 0) -> List[str]:
         """
-        Constructs an ordered list of viable models following the Tiered Fallback Strategy:
-        1. Tier 1 (Primary - High RPD Flash Lite): 3.1-flash-lite, 3.5-flash-lite, 2.5-flash-lite
-        2. Tier 2 (Reserve - Large Context / Low RPD): 3.5-flash, 3.6-flash, 3.7-flash, 2.5-flash
-           (Only included if Tier 1 is exhausted OR payload is exceptionally large > 16K tokens)
-        3. Excludes all blacklisted models (RPD 0).
+        Constructs an ordered list of viable models following the User-Specified Priority:
+        1. gemini-3.8-flash (Primary / Top Quality)
+        2. gemini-3.7-flash
+        3. gemini-3.6-flash
+        4. gemini-3.5-flash
+        5. gemini-3.5-flash-lite (High-RPD fallback)
+        Excludes all removed/blacklisted models.
         """
         with self._mutex:
             self._check_and_reset_daily()
+            ordered_priority = [
+                "gemini-3.8-flash",
+                "gemini-3.7-flash",
+                "gemini-3.6-flash",
+                "gemini-3.5-flash",
+                "gemini-3.5-flash-lite",
+            ]
             candidates = []
 
-            # 1. Evaluate Tier 1 (Primary - High RPD)
-            tier1_models = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-2.5-flash-lite"]
-            
-            # If preferred model is a valid Tier 1 model, prioritize it
+            # If user explicitly preferred a specific viable model, prioritize it first
             norm_pref = self._normalize_model_name(preferred_model) if preferred_model else None
-            if norm_pref and norm_pref in tier1_models and not self.is_rpd_exhausted(norm_pref):
+            if norm_pref and norm_pref in ordered_priority and not self.is_rpd_exhausted(norm_pref):
                 candidates.append(norm_pref)
 
-            for m in tier1_models:
+            for m in ordered_priority:
                 if m not in candidates and not self.is_rpd_exhausted(m):
                     candidates.append(m)
-
-            # 2. Evaluate Tier 2 (Reserve - Low RPD)
-            # Only add Tier 2 if Tier 1 is empty OR payload token count is large (> 16,000 tokens)
-            tier2_models = ["gemini-3.5-flash", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3-flash", "gemini-2.5-flash"]
-            
-            if not candidates or estimated_tokens > 16000:
-                if norm_pref and norm_pref in tier2_models and not self.is_rpd_exhausted(norm_pref) and norm_pref not in candidates:
-                    candidates.append(norm_pref)
-                for m in tier2_models:
-                    if m not in candidates and not self.is_rpd_exhausted(m):
-                        candidates.append(m)
 
             return candidates
 

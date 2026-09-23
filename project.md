@@ -34,10 +34,13 @@
    4. **Context-Aware Translation Proxy & Quota Tracker (Dịch thuật ngữ cảnh hóa & Phân tầng Quota)**:
       - **Mode 1: Chapter-Batch Aggregator**: Gom toàn bộ thoại trong chương/trang thành một lượt gọi API duy nhất, đảm bảo tính liên kết câu đa bong bóng (Multi-Bubble Cohesion), phân hóa đại từ xưng hô (`Pronoun Locking`), tự sửa lỗi chính tả OCR và kiểm định tính toàn vẹn 1:1 ID (`validate_and_unpack`).
       - **Mode 2: Direct Single-Line Passthrough**: Dịch trực tiếp khi người dùng chỉnh sửa từng ô thoại trên Canvas với độ trễ 0ms queue.
-      - **Phân Tầng Quota Thực (Tiered Routing Strategy)**:
-        - **Tier 1 (Chính - High RPD 500)**: `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-2.5-flash-lite` làm công cụ xử lý chính cho 100% chapter batch.
-        - **Tier 2 (Dự phòng - Low RPD 20 / Large Context)**: `gemini-3.5-flash`, `gemini-3.6-flash`, `gemini-3.7-flash`, `gemini-2.5-flash` chỉ dùng khi Tier 1 cạn quota hoặc batch > 16K tokens (hạn mức bảo vệ: 10 calls/ngày).
-        - **Loại trừ tuyệt đối (Blacklist RPD 0)**: `gemini-2.5-pro`, `gemini-3.1-pro`, `gemini-2-flash`, `gemini-2-flash-lite`.
+      - **Phân Tầng Quota & Chuỗi Ưu Tiên Model Dịch Thuật**:
+        - **1. `gemini-3.8-flash`** (Ưu tiên số 1): Model Flash thế hệ mới nhất và thông minh nhất, dịch thoát ý, giàu khẩu ngữ và chơi chữ tự nhiên. (20 RPD, 5 RPM).
+        - **2. `gemini-3.7-flash`** (Ưu tiên số 2): Suy luận ngữ cảnh sâu và giữ mạch câu mượt mà. (20 RPD, 5 RPM).
+        - **3. `gemini-3.6-flash`** (Ưu tiên số 3): Cân bằng chất lượng dịch và tốc độ. (20 RPD, 5 RPM).
+        - **4. `gemini-3.5-flash`** (Ưu tiên số 4): Dự phòng chất lượng cao. (20 RPD, 5 RPM).
+        - **5. `gemini-3.5-flash-lite`** (Ưu tiên số 5 - High RPD Fallback): Dự phòng khi các model Flash cạn quota ngày (500 RPD, 15 RPM).
+        - **Loại trừ hoàn toàn (Blacklist/Removed)**: `gemini-2.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-3-flash`, `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-3.1-pro`.
       - **Proactive RPM Throttling**: Chủ động giãn cách các lượt gọi liên tiếp ($60/\text{RPM} \times 1.05$) chống lỗi 429 triệt để.
       - **Safe Resume Checkpoint**: Tự động lưu checkpoint tiến độ vào `cache/translation_resume_state.json` khi toàn bộ model cạn RPD trong ngày.
    5. **Auto-Typesetting & Emotion-Adaptive 2-Font System**:
@@ -323,9 +326,14 @@ flowchart TD
    - Theo dõi số lượng request hàng ngày theo từng model, tự động đồng bộ mốc reset vào **00:00 US Pacific Time (08:00 UTC)**.
    - Trạng thái lưu trữ tại [`cache/quota_state.json`](file:///d:/BallonsTranslator/cache/quota_state.json), tự động khôi phục khi mở lại app.
 2. **Chiến Lược Phân Tầng Quota Thực (Tiered Routing Strategy)**:
-   - **Tier 1 (Chính - High RPD 500)**: `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite` (RPD 500, RPM 15) là công cụ dịch thuật chủ lực, luân phiên nhau khi một model chạm rate limit.
-   - **Tier 2 (Dự phòng - Low RPD 20 / Large Context)**: `gemini-3.5-flash`, `gemini-3.6-flash`, `gemini-3.7-flash`, `gemini-2.5-flash` (RPD 20, RPM 5) chỉ được gọi khi 100% Tier 1 cạn quota hoặc batch token > 16,000 (hạn mức bảo vệ: 10 calls/ngày).
-   - **Blacklist (Loại trừ hoàn toàn RPD 0)**: `gemini-2.5-pro`, `gemini-3.1-pro`, `gemini-2-flash`, `gemini-2-flash-lite`.
+   - **Thứ tự ưu tiên hàng đầu (Primary High-Intelligence Flash)**:
+     - 1. **`gemini-3.8-flash`** (20 RPD, 5 RPM): Ưu tiên hàng đầu cho chất lượng dịch, tư duy ngôn ngữ sâu và biểu cảm tự nhiên.
+     - 2. **`gemini-3.7-flash`** (20 RPD, 5 RPM): Khả năng giữ mạch và liên kết câu thoại mạnh mẽ.
+     - 3. **`gemini-3.6-flash`** (20 RPD, 5 RPM): Cân bằng tốc độ và độ mượt.
+     - 4. **`gemini-3.5-flash`** (20 RPD, 5 RPM): Dự phòng chất lượng cao.
+   - **Dự phòng tải cao (High-RPD Fallback Reserve)**:
+     - 5. **`gemini-3.5-flash-lite`** (500 RPD, 15 RPM): Đảm bảo thông suốt khi các model Flash cạn quota ngày.
+   - **Blacklist / Đã loại bỏ**: `gemini-2.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-3-flash`, `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-3.1-pro`.
 3. **Chủ Động Giãn Cách RPM (Proactive RPM Throttling)**:
    - Hệ thống tự động tính $\text{interval} = (60 / \text{RPM}) \times 1.05$ và chủ động chờ giữa các request liên tiếp tới cùng 1 model ($4.20\text{s}$ cho RPM 15, $12.60\text{s}$ cho RPM 5), triệt tiêu lỗi HTTP 429 do spam nhanh.
 4. **Dừng An Toàn & Lưu Resume Checkpoint**:
@@ -365,15 +373,13 @@ flowchart TD
 
 ### 5.4. Đo Đạc Hạn Mức Quota Thực & Tốc Độ Giãn Cách (Google AI Studio Free Tier)
 
-| Nhóm / Tier | Mô Hình AI | RPM | RPD (Ngày) | Khoảng Cách Gửi Tối Thiểu | Trạng Thái Thử Nghiệm |
+| Nhóm / Tier | Mô Hình AI | RPM | RPD (Ngày) | Khoảng Cách Gửi Tối Thiểu | Trạng Thái & Ưu Tiên |
 | :--- | :--- | :---: | :---: | :---: | :--- |
-| **Tier 1 (Chính)** | **`gemini-3.5-flash-lite`** | 15 | **500** | **4.20s** | Đã kiểm định 180 câu thoại / 6 sub-batches thành công |
-| **Tier 1 (Chính)** | **`gemini-3.1-flash-lite`** | 15 | **500** | **4.20s** | Đã kiểm định luân phiên khi 3.5 bận thành công |
-| **Tier 1 (Chính)** | **`gemini-2.5-flash-lite`** | 10 | **20** | **6.30s** | Tự động nhận diện cạn quota 20 RPD |
-| **Tier 2 (Dự phòng)** | **`gemini-3.5-flash`** | 5 | **20** | **12.60s** | Dự phòng khi Tier 1 cạn quota hoặc batch > 16K tokens |
-| **Tier 2 (Dự phòng)** | **`gemini-3.6-flash`** | 5 | **20** | **12.60s** | Dự phòng bảo vệ (Budget: 10 calls/ngày) |
-| **Tier 2 (Dự phòng)** | **`gemini-3.7-flash`** | 5 | **20** | **12.60s** | Dự phòng bảo vệ (Budget: 10 calls/ngày) |
-| **Tier 2 (Dự phòng)** | **`gemini-2.5-flash`** | 5 | **20** | **12.60s** | Dự phòng bảo vệ (Budget: 10 calls/ngày) |
+| **Ưu tiên 1 (Chính)** | **`gemini-3.8-flash`** | 5 | **20** | **12.60s** | GA Sept 2026, model thông minh nhất, dịch thoát ý, giàu khẩu ngữ |
+| **Ưu tiên 2 (Chính)** | **`gemini-3.7-flash`** | 5 | **20** | **12.60s** | Hiểu ngữ cảnh sâu, liên kết câu thoại mượt mà |
+| **Ưu tiên 3 (Chính)** | **`gemini-3.6-flash`** | 5 | **20** | **12.60s** | Cân bằng chất lượng dịch và tốc độ |
+| **Ưu tiên 4 (Chính)** | **`gemini-3.5-flash`** | 5 | **20** | **12.60s** | Dự phòng chất lượng cao |
+| **Ưu tiên 5 (Dự phòng)** | **`gemini-3.5-flash-lite`** | 15 | **500** | **4.20s** | Dự phòng tải cao RPD 500 khi các model Flash cạn quota ngày |
 
 ### 5.5. Kết Quả Kiểm Định 5 Mẫu Manga Scan Thực Tế (`scripts/verify_ocr_inpaint_accuracy.py`)
 
