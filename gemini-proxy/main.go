@@ -70,7 +70,6 @@ func (b *EventBroadcaster) Subscribe() chan LogEntry {
 func (b *EventBroadcaster) Unsubscribe(ch chan LogEntry) {
 	b.mu.Lock()
 	delete(b.clients, ch)
-	close(ch)
 	b.mu.Unlock()
 }
 
