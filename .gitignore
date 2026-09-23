@@ -68,6 +68,7 @@ Ultralytics/settings.json
 ponytail/
 cache/
 data/training_feedback/
+scratch/
 api-key.txt
 */api-key.txt
 gemini-proxy/api-key.txt
