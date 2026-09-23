@@ -29,7 +29,17 @@ This fork was created to eliminate all costly API subscriptions (such as OpenAI 
 
 ---
 
-<img src="doc/src/ui0.jpg" div align=center>
+### 🙏 Credits & Upstream Attribution
+
+This project is an enhanced fork of the remarkable open-source [**BallonsTranslator**](https://github.com/dmMaze/BallonsTranslator) created by [**@dmMaze**](https://github.com/dmMaze).
+
+- **Original Author / Upstream Repository**: [dmMaze/BallonsTranslator](https://github.com/dmMaze/BallonsTranslator)
+- **License**: Released under the terms of the [GNU General Public License v3.0 (GPL-3.0)](LICENSE), strictly preserving all original copyright notices.
+- **Fork Objectives**: Maintained by [@kurrukado](https://github.com/kurrukado/BallonsTranslator) with a dedicated focus on **100% Free & Local AI Pipelines** (Google Gemini Free-Tier multi-key load balancing, Clean-Canvas LaMa inpainting, ComicTextDetector 2K High-DPI, and Vietnamese scanlation typography presets) to enable high-quality manga translation with zero ongoing API costs.
+
+All foundational GUI architecture, canvas rendering systems, and core algorithms are credited to [@dmMaze](https://github.com/dmMaze) and upstream contributors. Huge thanks to them for creating this project!
+
+---
 
 <p align=center>
 BalloonsTranslator UI (Free AI Models Edition)

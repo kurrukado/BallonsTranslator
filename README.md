@@ -29,7 +29,17 @@ Bản phân nhánh này được phát triển với mục tiêu **tiết kiệm
 
 ---
 
-<img src="doc/src/ui0.jpg" div align=center>
+### 🙏 Lời cảm ơn & Nguồn gốc Dự án (Credits & Upstream Attribution)
+
+Dự án này là bản phân nhánh (fork) cải tiến từ dự án mã nguồn mở tuyệt vời [**BallonsTranslator**](https://github.com/dmMaze/BallonsTranslator) được sáng lập và phát triển bởi tác giả [**@dmMaze**](https://github.com/dmMaze).
+
+- **Tác giả gốc / Upstream Repository**: [dmMaze/BallonsTranslator](https://github.com/dmMaze/BallonsTranslator)
+- **Giấy phép bản quyền (License)**: Dự án tuân thủ đầy đủ điều khoản của [GNU General Public License v3.0 (GPL-3.0)](LICENSE), giữ nguyên bản quyền và sự tôn trọng tuyệt đối với tác giả gốc.
+- **Mục tiêu của Bản Fork**: Bản phân nhánh bởi [@kurrukado](https://github.com/kurrukado/BallonsTranslator) tập trung chuyên biệt vào việc **tối ưu hóa 100% cho các mô hình AI miễn phí** (Google Gemini Free Tier, On-Device LaMa Inpaint, ComicTextDetector 2K, font scanlation Tiếng Việt) giúp dịch giả và các nhóm dịch manga/comic có được chất lượng cao nhất mà không tốn chi phí API hàng tháng.
+
+Mọi đóng góp cốt lõi về kiến trúc giao diện GUI, canvas rendering và các thuật toán nền tảng đều thuộc về tác giả [@dmMaze](https://github.com/dmMaze) cùng các contributor của dự án gốc. Xin chân thành cảm ơn tác giả!
+
+---
 
 <p align=center>
 Giao diện BalloonsTranslator (Bản Free AI Edition)
