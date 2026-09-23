@@ -8,7 +8,14 @@ from pathlib import Path
 from typing import List, Dict, Optional, Type, Any, Union
 
 import httpx
-import openai
+
+class _LazyOpenAI:
+    def __getattr__(self, name):
+        import openai
+        return getattr(openai, name)
+
+openai = _LazyOpenAI()
+
 from pydantic import BaseModel, Field, ValidationError
 
 from .base import BaseTranslator, register_translator

@@ -6,7 +6,13 @@ import cv2
 import numpy as np
 from typing import List, Optional, Dict
 
-import openai
+class _LazyOpenAI:
+    def __getattr__(self, name):
+        import openai
+        return getattr(openai, name)
+
+openai = _LazyOpenAI()
+
 import httpx
 
 from .base import register_OCR, OCRBase, TextBlock

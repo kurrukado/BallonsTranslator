@@ -312,34 +312,44 @@ def main():
 
 def is_amd_gpu():
     try:
+        # Fast path: If torch already detected NVIDIA GPU, it's not AMD
+        if is_installed("torch"):
+            import torch
+            if hasattr(torch, 'cuda') and torch.cuda.is_available():
+                dev_name = torch.cuda.get_device_name(0)
+                if any(kw in dev_name for kw in ["NVIDIA", "GeForce", "RTX", "GTX", "Quadro", "Tesla"]):
+                    return False
+                if any(kw in dev_name for kw in ["AMD", "Radeon"]):
+                    return True
+
         if sys.platform == 'win32':
-            # Windows: use wmic
-            cmd = 'wmic path win32_VideoController get name'
-            output = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL)
-            return any(keyword in output for keyword in ["AMD", "Radeon"])
-
-        else:
-            return False
-
+            # Fast fallback on Windows without invoking slow/deprecated wmic
+            import winreg
+            try:
+                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000")
+                driver_desc, _ = winreg.QueryValueEx(key, "DriverDesc")
+                winreg.CloseKey(key)
+                return any(kw in driver_desc for kw in ["AMD", "Radeon"])
+            except Exception:
+                pass
+        return False
     except Exception:
         return False
 
 def supported_amd_nightly_gpu():
     try:
-        if sys.platform == 'win32':
-            # Windows: use wmic
-            cmd = 'wmic path win32_VideoController get name'
-            output = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL)
-
-            if any(keyword in output for keyword in
-                   ["RX 7900", "RX 7800", "RX 7700", "RX 7600", "PRO W7900", "PRO W7800", "PRO W7700"]):
-                return "RDNA3"
-            if any(keyword in output for keyword in
-                   ["RX 9070", "RX 9060"]):
-                return "RDNA4"
-        else:
+        if not is_amd_gpu():
             return "None"
-
+        if sys.platform == 'win32':
+            import winreg
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000")
+            driver_desc, _ = winreg.QueryValueEx(key, "DriverDesc")
+            winreg.CloseKey(key)
+            if any(keyword in driver_desc for keyword in ["RX 7900", "RX 7800", "RX 7700", "RX 7600", "PRO W7900", "PRO W7800", "PRO W7700"]):
+                return "RDNA3"
+            if any(keyword in driver_desc for keyword in ["RX 9070", "RX 9060"]):
+                return "RDNA4"
+        return "None"
     except Exception:
         return "None"
 

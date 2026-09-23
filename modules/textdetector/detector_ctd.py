@@ -3,13 +3,13 @@ import cv2
 from typing import Tuple, List
 
 from .base import register_textdetectors, TextDetectorBase, TextBlock, DEFAULT_DEVICE, DEVICE_SELECTOR, ProjImgTrans
-from .ctd import CTDModel
 from utils.textblock_mask import _is_gradient_bg
 
 CTD_ONNX_PATH = 'data/models/comictextdetector.pt.onnx'
 CTD_TORCH_PATH = 'data/models/comictextdetector.pt'
 
-def load_ctd_model(model_path, device, detect_size=1024, conf_thresh=0.20, text_thresh=0.25, link_thresh=0.20, low_text=0.15, min_area=16) -> CTDModel:
+def load_ctd_model(model_path, device, detect_size=1024, conf_thresh=0.20, text_thresh=0.25, link_thresh=0.20, low_text=0.15, min_area=16):
+    from .ctd import CTDModel
     model = CTDModel(model_path, detect_size=detect_size, device=device, conf_thresh=conf_thresh, text_thresh=text_thresh, link_thresh=link_thresh, low_text=low_text, min_area=min_area)
     return model
 
