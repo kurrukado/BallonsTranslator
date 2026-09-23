@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Gemini Proxy Queue</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a0f;color:#e0e0e0;min-height:100vh}
+.container{max-width:1000px;margin:0 auto;padding:20px}
+h1{text-align:center;font-size:2em;background:linear-gradient(135deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:24px}
+.card{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px;margin-bottom:16px}
+.card h2{color:#667eea;font-size:1.1em;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.stat{background:rgba(102,126,234,0.1);border-radius:8px;padding:12px;text-align:center}
+.stat .value{font-size:1.6em;font-weight:bold;color:#667eea}
+.stat .label{font-size:0.8em;color:#888;margin-top:2px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#4ade80;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.input-row{display:flex;gap:8px;margin-top:8px}
+.input-row input{flex:1;padding:7px 10px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:#e0e0e0;font-size:13px}
+.btn{padding:7px 14px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:6px;color:white;cursor:pointer;font-size:13px}
+.btn:hover{opacity:0.85}
+.btn-sm{padding:5px 10px;font-size:11px}
+.btn-red{background:linear-gradient(135deg,#ef4444,#dc2626)}
+
+/* Pipeline */
+.pipeline{display:flex;align-items:center;gap:6px;padding:10px 0;flex-wrap:wrap}
+.pipe-step{padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);opacity:0.4;transition:all 0.3s}
+.pipe-step.active{opacity:1;border-color:#667eea;box-shadow:0 0 12px rgba(102,126,234,0.3)}
+.pipe-step.done{opacity:1;border-color:#4ade80;background:rgba(74,222,128,0.1)}
+.pipe-step.error{opacity:1;border-color:#ef4444;background:rgba(239,68,68,0.1)}
+.pipe-arrow{color:#555;font-size:14px}
+
+/* Log console */
+.log-box{background:#0d0d14;border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px;max-height:280px;overflow-y:auto;font-family:'Cascadia Code','Consolas',monospace;font-size:11.5px;line-height:1.7}
+.log-box::-webkit-scrollbar{width:6px}
+.log-box::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+.log-line{padding:1px 0;border-bottom:1px solid rgba(255,255,255,0.03)}
+.log-line .ts{color:#555}
+.log-line .tag{font-weight:bold;padding:1px 4px;border-radius:3px;font-size:10px}
+.tag-recv{color:#60a5fa;background:rgba(96,165,250,0.15)}
+.tag-queue{color:#a78bfa;background:rgba(167,139,250,0.15)}
+.tag-sanitize{color:#fbbf24;background:rgba(251,191,36,0.15)}
+.tag-proxy{color:#34d399;background:rgba(52,211,153,0.15)}
+.tag-error{color:#f87171;background:rgba(248,113,113,0.15)}
+.tag-config{color:#fb923c;background:rgba(251,146,60,0.15)}
+
+/* Request history table */
+.req-table{width:100%;border-collapse:collapse;font-size:12px}
+.req-table th{text-align:left;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.15);color:#888;font-weight:600}
+.req-table td{padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.05)}
+.badge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge-ok{background:rgba(74,222,128,0.2);color:#4ade80}
+.badge-err{background:rgba(248,113,113,0.2);color:#f87171}
+.badge-wait{background:rgba(251,191,36,0.2);color:#fbbf24}
+.badge-run{background:rgba(96,165,250,0.2);color:#60a5fa}
+.empty-msg{text-align:center;color:#555;padding:20px;font-style:italic}
+.info-box{background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);border-radius:8px;padding:12px;font-size:12px;line-height:1.6}
+code{background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px;font-size:11px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:700px){.two-col{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>⚡ Gemini Proxy Queue</h1>
+
+<div class="card">
+<h2><span class="dot"></span> Server Status</h2>
+<div class="stat-grid">
+<div class="stat"><div class="value" id="s-pending">0</div><div class="label">In Queue</div></div>
+<div class="stat"><div class="value" id="s-total">0</div><div class="label">Total Received</div></div>
+<div class="stat"><div class="value" id="s-ok">0</div><div class="label">✓ Success</div></div>
+<div class="stat"><div class="value" id="s-fail">0</div><div class="label">✗ Failed</div></div>
+<div class="stat"><div class="value" id="s-delay">4s</div><div class="label">Delay</div></div>
+<div class="stat"><div class="value" id="s-current">-</div><div class="label">Processing</div></div>
+</div>
+</div>
+
+<div class="card">
+<h2>🔄 Current Pipeline</h2>
+<div class="pipeline" id="pipeline">
+<div class="pipe-step" id="p-recv">📥 Receive</div>
+<div class="pipe-arrow">→</div>
+<div class="pipe-step" id="p-sanitize">🧹 Sanitize</div>
+<div class="pipe-arrow">→</div>
+<div class="pipe-step" id="p-queue">📋 Queue</div>
+<div class="pipe-arrow">→</div>
+<div class="pipe-step" id="p-wait">⏳ Rate Limit</div>
+<div class="pipe-arrow">→</div>
+<div class="pipe-step" id="p-forward">🚀 Forward</div>
+<div class="pipe-arrow">→</div>
+<div class="pipe-step" id="p-response">📤 Response</div>
+</div>
+</div>
+
+<div class="two-col">
+<div class="card">
+<h2>⚙️ Settings</h2>
+<div class="input-row">
+<input id="apiKey" type="password" placeholder="Gemini API Key...">
+<button class="btn" onclick="setKey()">Set</button>
+</div>
+<div class="input-row">
+<input id="delayIn" type="number" value="4" min="1" max="60" style="width:80px">
+<button class="btn" onclick="setDelay()">Set Delay</button>
+<button class="btn btn-sm btn-red" onclick="clearHistory()">Clear Logs</button>
+</div>
+</div>
+<div class="card">
+<h2>📋 Ballons Setup</h2>
+<div class="info-box">
+<strong>Provider:</strong> OpenAI<br>
+<strong>Endpoint:</strong> <code>http://localhost:{{PORT}}/v1</code><br>
+<strong>Model:</strong> <code>Gemini Agent</code><br>
+<strong>API Key:</strong> set above or in Ballons
+</div>
+</div>
+</div>
+
+<div class="card">
+<h2>📜 Request History</h2>
+<div style="max-height:250px;overflow-y:auto">
+<table class="req-table">
+<thead><tr><th>#</th><th>Time</th><th>Model</th><th>Status</th><th>Duration</th><th>Details</th></tr></thead>
+<tbody id="req-body"><tr><td colspan="6" class="empty-msg">No requests yet</td></tr></tbody>
+</table>
+</div>
+</div>
+
+<div class="card">
+<h2>🖥️ Live Logs</h2>
+<div class="log-box" id="log-box"></div>
+</div>
+</div>
+
+<script>
+const logBox = document.getElementById('log-box');
+const reqBody = document.getElementById('req-body');
+let firstReq = true;
+
+// SSE for real-time logs
+const evtSrc = new EventSource('/api/logs/stream');
+evtSrc.onmessage = (e) => {
+  const d = JSON.parse(e.data);
+  addLog(d.tag, d.message, d.timestamp);
+  updatePipeline(d.tag, d.stage);
+};
+evtSrc.onerror = () => { setTimeout(() => location.reload(), 3000); };
+
+function addLog(tag, msg, ts) {
+  const el = document.createElement('div');
+  el.className = 'log-line';
+  const time = ts ? new Date(ts).toLocaleTimeString() : new Date().toLocaleTimeString();
+  const tagCls = 'tag tag-' + (tag||'queue').toLowerCase();
+  el.innerHTML = `<span class="ts">${time}</span> <span class="${tagCls}">${tag}</span> ${escHtml(msg)}`;
+  logBox.appendChild(el);
+  if (logBox.children.length > 200) logBox.removeChild(logBox.firstChild);
+  logBox.scrollTop = logBox.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function updatePipeline(tag, stage) {
+  const steps = ['p-recv','p-sanitize','p-queue','p-wait','p-forward','p-response'];
+  const map = {recv:'p-recv', sanitize:'p-sanitize', queue:'p-queue', wait:'p-wait', proxy:'p-forward', done:'p-response', error:'p-response'};
+  const active = map[stage] || map[tag.toLowerCase()];
+  if (!active) return;
+  steps.forEach(s => {
+    const el = document.getElementById(s);
+    el.classList.remove('active','done','error');
+    const idx = steps.indexOf(s);
+    const activeIdx = steps.indexOf(active);
+    if (idx < activeIdx) el.classList.add('done');
+    else if (idx === activeIdx) {
+      if (stage === 'error' || tag === 'ERROR') el.classList.add('error');
+      else if (stage === 'done') el.classList.add('done');
+      else el.classList.add('active');
+    }
+  });
+}
+
+// Poll status + request history
+async function poll() {
+  try {
+    const [sr, hr] = await Promise.all([fetch('/api/status'), fetch('/api/history')]);
+    const s = await sr.json();
+    const h = await hr.json();
+    document.getElementById('s-pending').textContent = s.queue_pending;
+    document.getElementById('s-total').textContent = s.total_received;
+    document.getElementById('s-ok').textContent = s.processed;
+    document.getElementById('s-fail').textContent = s.failed;
+    document.getElementById('s-delay').textContent = s.delay_seconds + 's';
+    document.getElementById('s-current').textContent = s.current_request || '-';
+
+    if (h && h.length > 0) {
+      firstReq = false;
+      reqBody.innerHTML = h.map(r => `<tr>
+        <td>#${r.id}</td>
+        <td>${new Date(r.received_at).toLocaleTimeString()}</td>
+        <td>${r.model||'-'}</td>
+        <td><span class="badge badge-${r.status==='ok'?'ok':r.status==='error'?'err':r.status==='processing'?'run':'wait'}">${r.status}</span></td>
+        <td>${r.duration||'-'}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.detail||''}</td>
+      </tr>`).join('');
+    } else if (firstReq) {
+      reqBody.innerHTML = '<tr><td colspan="6" class="empty-msg">No requests yet</td></tr>';
+    }
+  } catch(e) {}
+}
+
+async function setKey() {
+  const k = document.getElementById('apiKey').value; if (!k) return;
+  await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_key:k})});
+  document.getElementById('apiKey').value=''; addLog('CONFIG','API Key updated');
+}
+async function setDelay() {
+  const d = parseFloat(document.getElementById('delayIn').value); if(isNaN(d)) return;
+  await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({delay_seconds:d})});
+  poll();
+}
+function clearHistory() { logBox.innerHTML=''; reqBody.innerHTML='<tr><td colspan="6" class="empty-msg">Cleared</td></tr>'; }
+
+setInterval(poll, 1500);
+poll();
+</script>
+</body>
+</html>

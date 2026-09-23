@@ -16,15 +16,22 @@ def is_proxy_alive(url="http://127.0.0.1:8080/api/status", timeout=0.2):
         return False
 
 def get_saved_api_key():
-    # 1. Try reading from api-key.txt
-    txt_path = Path("d:/gemini-proxy/api-key.txt")
-    if txt_path.exists():
-        try:
-            key = txt_path.read_text(encoding="utf-8").strip()
-            if key:
-                return key
-        except Exception:
-            pass
+    # 1. Try reading from api-key.txt in project or system
+    project_root = Path(__file__).resolve().parent.parent
+    possible_txt_paths = [
+        project_root / "gemini-proxy" / "api-key.txt",
+        Path("gemini-proxy/api-key.txt"),
+        Path("E:/gemini-proxy/api-key.txt"),
+        Path("d:/gemini-proxy/api-key.txt"),
+    ]
+    for txt_path in possible_txt_paths:
+        if txt_path.exists():
+            try:
+                key = txt_path.read_text(encoding="utf-8").strip()
+                if key and not key.startswith("#") and "YOUR_GEMINI" not in key:
+                    return key
+            except Exception:
+                pass
 
     # 2. Try reading from config.json
     try:
@@ -85,10 +92,13 @@ def ensure_gemini_proxy_running():
         return True
 
     # Search for gemini-proxy executable
+    project_root = Path(__file__).resolve().parent.parent
     possible_paths = [
+        project_root / "gemini-proxy" / "gemini-proxy.exe",
+        Path("gemini-proxy/gemini-proxy.exe"),
+        Path("gemini-proxy.exe"),
+        Path("E:/gemini-proxy/gemini-proxy.exe"),
         Path("d:/gemini-proxy/gemini-proxy.exe"),
-        Path(__file__).resolve().parent.parent.parent / "gemini-proxy" / "gemini-proxy.exe",
-        Path("gemini-proxy.exe")
     ]
 
     proxy_exe = None

@@ -28,17 +28,21 @@ if not exist "venv\Scripts\python.exe" (
 :: 2. Auto-start Gemini Proxy in background if not already running
 netstat -ano | findstr /R ":8080 .*LISTENING" >nul 2>&1
 if errorlevel 1 (
-    if exist "D:\gemini-proxy\gemini-proxy.exe" (
+    if exist "%~dp0gemini-proxy\gemini-proxy.exe" (
         echo [*] Auto-starting Gemini Proxy on port 8080...
-        start "" /min "D:\gemini-proxy\gemini-proxy.exe"
-        ping 127.0.0.1 -n 2 >nul
-    ) else if exist "%~dp0..\gemini-proxy\gemini-proxy.exe" (
-        echo [*] Auto-starting Gemini Proxy on port 8080...
-        start "" /min "%~dp0..\gemini-proxy\gemini-proxy.exe"
+        start "" /min "%~dp0gemini-proxy\gemini-proxy.exe"
         ping 127.0.0.1 -n 2 >nul
     ) else if exist "%~dp0gemini-proxy.exe" (
         echo [*] Auto-starting Gemini Proxy on port 8080...
         start "" /min "%~dp0gemini-proxy.exe"
+        ping 127.0.0.1 -n 2 >nul
+    ) else if exist "E:\gemini-proxy\gemini-proxy.exe" (
+        echo [*] Auto-starting Gemini Proxy on port 8080...
+        start "" /min "E:\gemini-proxy\gemini-proxy.exe"
+        ping 127.0.0.1 -n 2 >nul
+    ) else if exist "D:\gemini-proxy\gemini-proxy.exe" (
+        echo [*] Auto-starting Gemini Proxy on port 8080...
+        start "" /min "D:\gemini-proxy\gemini-proxy.exe"
         ping 127.0.0.1 -n 2 >nul
     )
 )
