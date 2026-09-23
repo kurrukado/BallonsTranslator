@@ -22,24 +22,37 @@ class MangaOCR(OCRBase):
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
-        self.device = self.params.get("device", {}).get("value", DEFAULT_DEVICE)
         self.model = None
 
     def _load_model(self):
         if self.model is None:
-            LOGGER.info(f"[manga-ocr] Initializing MangaOcr on {self.device}...")
+            device = self.get_param_value("device") if hasattr(self, "get_param_value") else getattr(self, "device", DEFAULT_DEVICE)
+            LOGGER.info(f"[manga-ocr] Initializing MangaOcr on {device}...")
             from manga_ocr import MangaOcr
-            force_cpu = "cpu" in str(self.device).lower()
+            force_cpu = "cpu" in str(device).lower()
             self.model = MangaOcr(force_cpu=force_cpu)
             LOGGER.info("[manga-ocr] Model loaded successfully.")
+
+    @staticmethod
+    def _to_pil_rgb(img: np.ndarray) -> Optional[Image.Image]:
+        if img is None or img.size == 0:
+            return None
+        if img.ndim == 2:
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        elif img.shape[-1] == 4:
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
+        elif img.shape[-1] == 3:
+            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        else:
+            img_rgb = img
+        return Image.fromarray(img_rgb)
 
     def ocr_img(self, img: np.ndarray) -> str:
         if self.model is None:
             self._load_model()
-        if img is None or img.size == 0:
+        pil_img = self._to_pil_rgb(img)
+        if pil_img is None:
             return ""
-        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) if img.ndim == 3 else img
-        pil_img = Image.fromarray(img_rgb)
         return self.model(pil_img)
 
     def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs) -> None:
@@ -57,12 +70,11 @@ class MangaOCR(OCRBase):
                 continue
 
             crop = img[y1:y2, x1:x2]
-            if crop.size == 0:
+            pil_img = self._to_pil_rgb(crop)
+            if pil_img is None:
                 blk.text = [""]
                 continue
 
-            img_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB) if crop.ndim == 3 else crop
-            pil_img = Image.fromarray(img_rgb)
             try:
                 recognized_text = self.model(pil_img).strip()
                 blk.text = [recognized_text] if recognized_text else [""]

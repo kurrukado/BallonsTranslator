@@ -97,7 +97,12 @@ class ComicTextDetector(TextDetectorBase):
                 rx2, ry2 = min(im_w, bx2 + 10), min(im_h, by2 + 10)
                 crop_border = img[ry1:ry2, rx1:rx2]
                 if crop_border.size > 0:
-                    gray_b = cv2.cvtColor(crop_border, cv2.COLOR_RGB2GRAY) if crop_border.ndim == 3 else crop_border
+                    if crop_border.ndim == 2:
+                        gray_b = crop_border
+                    elif crop_border.shape[-1] == 4:
+                        gray_b = cv2.cvtColor(crop_border, cv2.COLOR_RGBA2GRAY)
+                    else:
+                        gray_b = cv2.cvtColor(crop_border, cv2.COLOR_RGB2GRAY)
                     border_px = np.concatenate([gray_b[0, :], gray_b[-1, :], gray_b[:, 0], gray_b[:, -1]])
                     blk.is_balloon = bool(np.mean(border_px) > 200 and np.std(border_px) < 30)
         

@@ -609,9 +609,6 @@ class ImgtransThread(QThread):
                 self.inpaint_counter += 1
                 self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_INPAINT)
                 self.update_inpaint_progress.emit(self.inpaint_counter)
-            else:
-                if len(blk_removed) > 0:
-                    self.imgtrans_proj.load_mask_by_imgname
 
             if cfg_module.enable_translate:
                 if use_chapter_batch and translation_proxy is not None:

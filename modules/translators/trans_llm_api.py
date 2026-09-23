@@ -664,6 +664,10 @@ class LLM_API_Translator(BaseTranslator):
         self.logger.error("All available API keys are currently rate-limited.")
         return None
 
+    def _get_api_key(self) -> str:
+        """Helper to get currently selected or configured API key."""
+        return self._select_api_key() or self.apikey or ""
+
     def _request_translation(self, prompt: str) -> Optional[TranslationResponse]:
         current_api_key = self._select_api_key()
         

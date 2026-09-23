@@ -227,7 +227,7 @@ def clean_and_repair_json(raw_text: str) -> Dict[str, Any]:
     except Exception:
         pass
 
-    # Repair 3: Regex structured extraction fallback
+    # Repair 3: Regex structured extraction fallback (Order-independent key matching)
     # Match pages and their dialogues
     pages_list = []
     page_matches = re.finditer(r'"page_index"\s*:\s*(\d+).*?"dialogues"\s*:\s*\[(.*?)\]', cleaned, re.DOTALL)
@@ -236,13 +236,16 @@ def clean_and_repair_json(raw_text: str) -> Dict[str, Any]:
         p_idx = int(pm.group(1))
         d_block = pm.group(2)
         d_items = []
-        d_matches = re.finditer(r'\{\s*"id"\s*:\s*([^,\s]+)\s*,\s*"translation"\s*:\s*"(.*?)"(?:\s*,\s*"emotion_tag"\s*:\s*"(.*?)")?\s*\}', d_block, re.DOTALL)
-        for dm in d_matches:
-            d_id_raw = dm.group(1).strip('"\'')
-            d_id = int(d_id_raw) if d_id_raw.isdigit() else d_id_raw
-            d_trans = dm.group(2)
-            d_emotion = dm.group(3) or "normal"
-            d_items.append({"id": d_id, "translation": d_trans, "emotion_tag": d_emotion})
+        for block_str in re.findall(r'\{[^{}]*\}', d_block):
+            id_m = re.search(r'"id"\s*:\s*([^,\s}]+)', block_str)
+            trans_m = re.search(r'"translation"\s*:\s*"(.*?)"', block_str, re.DOTALL)
+            if id_m and trans_m:
+                d_id_raw = id_m.group(1).strip('"\'} ')
+                d_id = int(d_id_raw) if d_id_raw.isdigit() else d_id_raw
+                d_trans = trans_m.group(1)
+                emo_m = re.search(r'"emotion_tag"\s*:\s*"(.*?)"', block_str)
+                d_emotion = emo_m.group(1) if emo_m else "normal"
+                d_items.append({"id": d_id, "translation": d_trans, "emotion_tag": d_emotion})
         if d_items:
             found_any = True
             pages_list.append({"page_index": p_idx, "dialogues": d_items})
