@@ -1,244 +1,183 @@
-# BallonTranslator
-[简体中文](/README.md) | [English](/README_EN.md) | [pt-BR](../doc/README_PT-BR.md) | [Русский](../doc/README_RU.md) | [日本語](../doc/README_JA.md) | [Indonesia](../doc/README_ID.md) | Tiếng Việt | [한국어](../doc/README_KO.md) | [Español](../doc/README_ES.md) | [Français](../doc/README_FR.md)
+> [!IMPORTANT]  
+> **Nếu bạn chia sẻ công khai kết quả dịch máy từ công cụ này mà chưa qua biên dịch hoặc hiệu đính bởi dịch giả có kinh nghiệm, vui lòng ghi rõ nguồn là bản dịch máy (machine translation).**
 
-Lại thêm một công cụ, phần mềm dịch truyện siu xịn khác có áp dụng ML/AI.
+# 🎈 BalloonsTranslator — 100% Free AI Models Edition
 
-<img src="./src/ui0.jpg" div align=center>
+> **Phiên bản tối ưu hóa đặc biệt tập trung 100% vào các Mô hình AI Miễn phí (Zero-Cost / Free-Tier AI Pipelines) chất lượng cao nhất cho dịch truyện tranh Manga/Comic sang Tiếng Việt & Đa ngôn ngữ.**
 
-<p align=center>
-preview
+[![Free AI Models](https://img.shields.io/badge/AI%20Cost-100%25%20Free-brightgreen.svg)](#)
+[![Google Gemini API](https://img.shields.io/badge/LLM-Gemini%20Flash%20Free%20Tier-blue.svg)](#)
+[![Local Inpainting](https://img.shields.io/badge/Inpaint-LaMa%20Large%20(Local%20CUDA)-orange.svg)](#)
+[![Text Detection](https://img.shields.io/badge/Detector-ComicTextDetector%202K-purple.svg)](#)
+[![License](https://img.shields.io/badge/License-GPL--3.0-yellow.svg)](../LICENSE)
+
+[Tiếng Việt](README_VI.md) | [English](../README_EN.md) | [简体中文](README_CN.md) | [日本語](README_JA.md)
+
+---
+
+### 🌟 Tại sao chọn bản Free AI Edition này? (Why This Fork?)
+
+Bản phân nhánh này được phát triển với mục tiêu **tiết kiệm 100% chi phí cho dịch giả và các nhóm scanlation**: Loại bỏ hoàn toàn sự phụ thuộc vào các API dịch thuật trả phí đắt đỏ (như OpenAI GPT-4 hay DeepL Pro), thay thế toàn bộ quy trình dịch thuật, xóa chữ và nhận diện văn bản bằng **100% các công nghệ AI Miễn Phí và On-Device chất lượng cao nhất hiện nay**:
+
+| Thành Phần Pipeline | Bản Gốc / Bản Khác | Bản Free AI Edition (Bản Này) | Chi Phí |
+| :--- | :--- | :--- | :---: |
+| **Dịch thuật Thông Minh (LLM)** | Phụ thuộc DeepL / OpenAI trả phí; dễ bị lỗi giới hạn quota & câu dịch rời rạc | **Google Gemini Flash & Lite** qua `gemini-proxy` tự động cân bằng tải đa khóa (multi-key). Tự động nối mạch câu đa bong bóng (Multi-bubble cohesion), xử lý đại từ xưng hô chuẩn sắc thái manga, chống ảo giác 100%. | **0đ (Free Tier)** |
+| **Xóa chữ (Inpaint)** | Gãy dải chuyển sắc (gradient stepping), lộ viền ghép (seam), rò rỉ pixel | **Clean-Canvas LaMa Large** kết hợp **Laplacian Multi-Band Pyramid Blending**. Khôi phục mượt mà nền screentone dốc, bảo toàn 100% điểm ảnh gốc ngoài mask (`Unmasked MAE = 0.000000`). | **0đ (Local GPU)** |
+| **Nhận diện chữ (Detection)**| Bỏ sót chữ ngoài bóng thoại (free-floating text), vỡ nét ảnh 2K | **ComicTextDetector 2K High-DPI (1536px)** với độ nhạy biên cao (`text_thresh=0.25, link_thresh=0.20`), gom trọn 100% khung thoại mở và chữ rơi tự do. | **0đ (Local GPU)** |
+| **OCR (Nhận diện ký tự)** | Gọi API bên thứ ba có phí hoặc cài đặt cồng kềnh | **Windows Media OCR** tích hợp sẵn trong Windows + **PaddleOCR** offline fallback siêu tốc. | **0đ (Offline)** |
+| **Phối Font Tiếng Việt** | Dùng 1 font đơn điệu cho tất cả các loại lời thoại | **Hệ thống tự động 2 Font**: Thoại thường (`Yuki-CCMarianChurchlandJournal`) và Gầm thét/hành động (`CCWildWordsRoman`) chuẩn phong cách scanlation. | **0đ (Tích hợp sẵn)** |
+
+---
+
+### 🙏 Lời cảm ơn & Nguồn gốc Dự án (Credits & Upstream Attribution)
+
+Dự án này là bản phân nhánh (fork) cải tiến từ dự án mã nguồn mở tuyệt vời [**BallonsTranslator**](https://github.com/dmMaze/BallonsTranslator) được sáng lập và phát triển bởi tác giả [**@dmMaze**](https://github.com/dmMaze).
+
+- **Tác giả gốc / Upstream Repository**: [dmMaze/BallonsTranslator](https://github.com/dmMaze/BallonsTranslator)
+- **Giấy phép bản quyền (License)**: Dự án tuân thủ đầy đủ điều khoản của [GNU General Public License v3.0 (GPL-3.0)](../LICENSE), giữ nguyên bản quyền và sự tôn trọng tuyệt đối với tác giả gốc.
+- **Mục tiêu của Bản Fork**: Bản phân nhánh bởi [@kurrukado](https://github.com/kurrukado/BallonsTranslator) tập trung chuyên biệt vào việc **tối ưu hóa 100% cho các mô hình AI miễn phí** (Google Gemini Free Tier, On-Device LaMa Inpaint, ComicTextDetector 2K, font scanlation Tiếng Việt) giúp dịch giả và các nhóm dịch manga/comic có được chất lượng cao nhất mà không tốn chi phí API hàng tháng.
+
+Mọi đóng góp cốt lõi về kiến trúc giao diện GUI, canvas rendering và các thuật toán nền tảng đều thuộc về tác giả [@dmMaze](https://github.com/dmMaze) cùng các contributor của dự án gốc. Xin chân thành cảm ơn tác giả!
+
+---
+
+<p align="center">
+  <img src="src/ui0.jpg" alt="Giao diện BalloonsTranslator Free AI Edition">
+</p>
+<p align="center">
+  <em>Giao diện BalloonsTranslator (Bản Free AI Edition)</em>
 </p>
 
-# Đặc trưng
-* Dịch hoàn toàn tự động
-  - Hỗ trợ phát hiện văn bản tự động, nhận dạng, loại bỏ và dịch thuật. Các tính năng xoay quanh hầu hết phụ thuộc vào các đặc tính này.
-  - Font, kích thức chữ được ước tính dựa trên định dạng của văn bản gốc.
-  - Hoạt động tốt với manga và comics.
-  - Dùng siu xịn khi mà Manga -> Tiếng Anh, Tiếng Anh -> tiếng Trung (Zì app này các pháp sư Trung Hoa làm mà :> ).
-  
-* Chỉnh sửa hình ảnh
-  - Hỗ trợ Chỉnh sửa & Inpainting (na ná brush tool trong Photoshop)
-  - Thích nghi với hình ảnh có tỷ lệ khung hình cực cao như Webtoons (?? hem hỉu lém, nhưng mà nói chung sài được với cả webtoons)
-  
-* Chỉnh sửa văn bản
-  - Hỗ trợ RTF (rich text formatting) zà [TSP (text style presets)](https://github.com/dmMaze/BallonsTranslator/pull/311), có thể chỉnh sửa lại các văn bản đã được dịch đó lun nè.
-  - Hỗ trợ Tìm kiếm & Thay thế
-  - Hỗ trợ cả import từ dạng word hoặc export ra dạng đó nữa
+---
 
-# Cài đặt
+# Các tính năng nổi bật (Features)
 
-## Trên Windows
+* **Dịch thuật tự động 1-Click**  
+  - Tự động nhận diện khung chữ, bóc tách văn bản, xóa chữ và điền văn bản dịch vào đúng vị trí.
+  - Tự động ước lượng định dạng chữ gốc (màu sắc, viền, góc xoay, căn lề, kích thước) để dàn trang bản dịch tự nhiên nhất.
+  - Tối ưu hóa đặc biệt cho Manga Nhật, Manhwa Hàn và Comic Âu Mỹ.
+  - Tích hợp sẵn `gemini-proxy` tự động xoay tua nhiều API key Gemini miễn phí, không bao giờ lo cạn quota hay tắc nghẽn.
 
-Nếu bạn lười cài Python và Git nhưng vẫn có thể truy cập vào Internet, thì có thể tải BallonsTranslator_dev_src_with_gitpython.7z từ [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) hoặc nà [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing), unzip nó rùi chạy ```launch_win.bat```.
-Chạy file ```scripts/local_gitpull.bat``` để cập nhật bản mới nhất nhoa.
+* **Chỉnh sửa hình ảnh & Xóa chữ thủ công (Image Editing)**  
+  - Hỗ trợ cọ xóa chữ (Inpainting Healing Brush) và chỉnh sửa mặt nạ (mask editing) chuyên nghiệp như Photoshop.
+  - Xử lý mượt mà các trang truyện tranh dài (Webtoon) có tỷ lệ khung hình cực cao.
 
-## Chạy mã nguồn (từ github)
+* **Biên tập văn bản trực quan (Text Editing)**  
+  - Chỉnh sửa văn bản theo thời gian thực (WYSIWYG) với đầy đủ định dạng Rich Text.
+  - Hỗ trợ [Text Style Presets](https://github.com/dmMaze/BallonsTranslator/pull/311) để lưu và áp dụng nhanh kiểu chữ yêu thích.
+  - Tìm kiếm và thay thế toàn bộ từ khóa trong trang hoặc toàn bộ chương truyện.
+  - Hỗ trợ xuất / nhập bản dịch qua tài liệu Word (.docx) để dịch giả bên ngoài hiệu đính dễ dàng.
 
-*Phù hợp cho mấy bạn sài linux như tui hehe.*
+---
 
-Cài [Python](https://www.python.org/downloads/release/python-31011) **<= 3.12** (Đừng cóa mà sài cái bản có sẵn trên Microsoft Store) và [Git](https://git-scm.com/downloads).
+# Hướng dẫn cài đặt (Installation)
 
+## Yêu cầu hệ thống
+- **Hệ điều hành**: Windows 10/11 (64-bit).
+- **Python**: Khuyến nghị Python 3.10 đến 3.12 (hoặc Python 3.14 sử dụng chế độ frozen).
+- **GPU (Card đồ họa)**: Khuyến nghị NVIDIA GPU (hỗ trợ CUDA) để tăng tốc độ xóa chữ và nhận diện; hỗ trợ chạy bằng CPU nếu không có GPU rời.
+
+## Cài đặt từ mã nguồn (Chạy nhanh nhất)
+
+1. **Cài đặt Python & Git**:  
+   Tải và cài đặt [Python](https://www.python.org/downloads/) (chọn Add to PATH) và [Git](https://git-scm.com/downloads).
+
+2. **Sao chép (Clone) kho mã nguồn**:
+   ```bash
+   git clone https://github.com/kurrukado/BallonsTranslator.git
+   cd BallonsTranslator
+   ```
+
+3. **Cấu hình Gemini API Key Miễn Phí**:
+   - Truy cập [Google AI Studio](https://aistudio.google.com/) để lấy 1 hoặc nhiều API Key miễn phí.
+   - Mở file `gemini-proxy/api-key.txt` (hoặc copy từ `api-key.txt.example`) và dán các key vào, mỗi key trên một dòng:
+     ```text
+     AIzaSyYourFirstGeminiApiKey...
+     AIzaSyYourSecondGeminiApiKey...
+     ```
+
+4. **Khởi chạy chương trình**:
+   - **Cách 1 (Khuyên dùng)**: Nhấp đúp vào file `start.bat` để tự động bật proxy và giao diện dịch.
+   - **Cách 2 (Dòng lệnh)**:
+     ```bash
+     python launch.py --frozen
+     ```
+
+---
+
+# Hướng dẫn sử dụng (Usage)
+
+## Dịch toàn bộ thư mục chỉ với 1 Click
+1. Mở chương trình, bấm vào biểu tượng bánh răng **Cài đặt (Settings)**:
+   - Chọn bộ dịch: `gemini` (hoặc `gemini-proxy`).
+   - Chọn ngôn ngữ nguồn (Source Language): ví dụ `Japanese` (Tiếng Nhật) hoặc `English` (Tiếng Anh).
+   - Chọn ngôn ngữ đích (Target Language): `Vietnamese` (Tiếng Việt).
+2. Bấm vào biểu tượng thư mục để mở thư mục chứa các ảnh truyện cần dịch.
+3. Nhấp nút **Run** (Chạy) và đợi chương trình hoàn tất toàn bộ các bước nhận diện, xóa chữ và điền lời dịch.
+
+<p align="center">
+  <img src="src/run.gif" alt="Dịch tự động 1 click">
+</p>
+
+---
+
+## Các công cụ chỉnh sửa thủ công
+
+### Cọ xóa chữ (Inpaint Healing Brush)
+<p align="center">
+  <img src="src/imgedit_inpaint.gif" alt="Cọ xóa chữ">
+</p>
+
+### Công cụ quét vùng chữ nhật (Rectangle Tool)
+<p align="center">
+  <img src="src/rect_tool.gif" alt="Công cụ quét chữ nhật">
+</p>
+
+- Nhấn giữ **chuột trái** và kéo khung chữ nhật để xóa chữ bên trong khung.
+- Nhấn giữ **chuột phải** và kéo khung để hủy kết quả xóa và phục hồi ảnh gốc.
+- Tích chọn **Tự động (Auto)** để chương trình xóa chữ ngay khi nhả chuột, hoặc bấm phím `Space` (Cách) / nút `Inpaint` để xóa chữ. Bấm `Ctrl+D` để hủy khung chọn.
+
+### Biên tập văn bản & Dàn trang tự động (Text Editing & Layout)
+<p align="center">
+  <img src="src/textedit.gif" alt="Biên tập văn bản">
+</p>
+
+<p align="center">
+  <img src="src/multisel_autolayout.gif" alt="Dàn trang hàng loạt">
+</p>
+
+---
+
+# Bảng phím tắt tiện lợi (Shortcuts)
+
+| Phím tắt | Chức năng |
+| :--- | :--- |
+| `Ctrl + Z` / `Ctrl + Y` | Hoàn tác (Undo) / Làm lại (Redo) |
+| `A` / `D` hoặc `PageUp` / `PageDown` | Chuyển trang trước / trang sau (tự động lưu trang hiện tại) |
+| `T` | Chuyển sang chế độ Biên tập văn bản (Text Edit Mode) |
+| `W` | Kích hoạt chế độ tạo khung chữ mới (sau đó kéo chuột phải trên canvas để vẽ khung) |
+| `P` | Chuyển sang chế độ Cọ xóa chữ (Inpaint Brush Mode) |
+| `Ctrl + (+ / -)` hoặc `Lăn chuột` | Phóng to / Thu nhỏ trang truyện |
+| `Ctrl + A` | Chọn tất cả các khung chữ trên trang hiện tại |
+| `Ctrl + F` | Tìm kiếm văn bản trên trang hiện tại |
+| `Ctrl + G` | Tìm kiếm văn bản trên toàn bộ các trang (Global Find) |
+| `Ctrl + B` / `Ctrl + I` / `Ctrl + U` | In đậm / In nghiêng / Gạch chân văn bản đang chọn |
+| `Alt + Phím mũi tên` hoặc `Alt + WASD` | Chuyển nhanh giữa các khung thoại |
+| `0 - 9` | Điều chỉnh độ trong suốt của lớp dịch / ảnh gốc |
+
+---
+
+# Chế độ dòng lệnh không cần giao diện (Headless CLI)
+
+Bạn có thể chạy dịch hàng loạt qua dòng lệnh mà không cần mở giao diện đồ họa:
 ```bash
-# Clone this repo
-$ git clone https://github.com/dmMaze/BallonsTranslator.git ; cd BallonsTranslator
-
-# Launch the app
-$ python3 launch.py
+python launch.py --headless --exec_dirs "D:/Manga/Chapter_01,D:/Manga/Chapter_02"
 ```
+Toàn bộ cài đặt (mô hình nhận diện, ngôn ngữ dịch) sẽ được nạp tự động từ tệp `config/config.json`.
 
-**Lưu ý:** Lần đầu tiên khởi chạy, app sẽ tự động cài đặt các thư viện và tải xuống các models. Nếu tải xuống không thành công, bạn sẽ cần tải xuống thư mục **data** (hoặc các tệp bị thiếu được báo lỗi trong terminal) từ [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw) hoặc [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing) rùi lưu nó ở đường dẫn tương ứng trong thư mục mã nguồn.
+---
 
-## Chạy ứng dụng trên MacOS (tương thích với cả chip Intel và Apple Silicon)
-<i>Lưu ý MacOS cũng có thể chạy cách bên trên nếu cách này không hoạt động.</i>  
+# Giấy phép & Tuyên bố miễn trừ trách nhiệm (License)
 
-![录屏2023-09-11 14 26 49](https://github.com/hyrulelinks/BallonsTranslator/assets/134026642/647c0fa0-ed37-49d6-bbf4-8a8697bc873e)
-
-#### 1. Chuẩn bị
--   Tải libs và models từ [MEGA](https://mega.nz/folder/gmhmACoD#dkVlZ2nphOkU5-2ACb5dKw "MEGA") hoặc [Google Drive](https://drive.google.com/drive/folders/1uElIYRLNakJj-YS0Kd3r3HE-wzeEvrWd?usp=sharing)
-
-
-<img width="1268" alt="截屏2023-09-08 13 44 55_7g32SMgxIf" src="https://github.com/dmMaze/BallonsTranslator/assets/134026642/40fbb9b8-a788-4a6e-8e69-0248abaee21a">
-
--  Chuyển tất cả các tài nguyên đã tải xuống vào thư mục ```data``` (chưa có thì tự tạo nhá), cấu trúc cây thư mục cuối cùng sẽ trông như nè:
-
-```
-data
-├── libs
-│   └── patchmatch_inpaint.dll
-└── models
-    ├── aot_inpainter.ckpt
-    ├── comictextdetector.pt
-    ├── comictextdetector.pt.onnx
-    ├── lama_mpe.ckpt
-    ├── manga-ocr-base
-    │   ├── README.md
-    │   ├── config.json
-    │   ├── preprocessor_config.json
-    │   ├── pytorch_model.bin
-    │   ├── special_tokens_map.json
-    │   ├── tokenizer_config.json
-    │   └── vocab.txt
-    ├── mit32px_ocr.ckpt
-    ├── mit48pxctc_ocr.ckpt
-    └── pkuseg
-        ├── postag
-        │   ├── features.pkl
-        │   └── weights.npz
-        ├── postag.zip
-        └── spacy_ontonotes
-            ├── features.msgpack
-            └── weights.npz
-
-7 directories, 23 files
-```
-
--  Cài đặt pyenv command line tool để quản lý các phiên bản Python. Nên cài qua Homebrew.
-```
-# Install via Homebrew
-brew install pyenv
-
-# Install via official script
-curl https://pyenv.run | bash
-
-# Set shell environment after install
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc
-echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc
-echo 'eval "$(pyenv init -)"' >> ~/.zshrc
-```
-
-
-#### 2. Chạy ứng dụng
-```
-# Enter the `data` working directory
-cd data
-
-# Clone the `dev` branch of the repo
-git clone -b dev https://github.com/dmMaze/BallonsTranslator.git
-
-# Enter the `BallonsTranslator` working directory
-cd BallonsTranslator
-
-# Run the build script, will ask for password at pyinstaller step, enter password and press enter
-sh scripts/build-macos-app.sh
-```
-> 📌 Ứng dụng được build ra file chạy ở đường dẫn ```./data/BallonsTranslator/dist/BallonsTranslator.app```, kéo cái ```BallonsTranslator.app``` vô thư mục macOS application để cài đặt. Sẵn sàng sử dụng lun mà không cần cấu hình thêm cho Python.
-
-</details>
-
-Để sài Sugoi translator(Japanese-English only), tải [offline model](https://drive.google.com/drive/folders/1KnDlfUM9zbnYFTo6iCbnBaBKabXfnVJm), chuyển "sugoi_translator" vào ```BallonsTranslator/ballontranslator/data/models```.
-
-# Cách sử dụng
-
-**Bạn nên chạy chương trình trong terminal trong trường hợp nó bị crashed và không để lại log, hãy xem gif sau.**
-<img src="./src/run.gif">
-
-- Lần đầu tiên chạy ứng dụng, hãy chọn Chương trình dịch, cài Ngôn ngữ gốc và Ngôn ngữ dịch bằng cách nhấp vào biểu tượng Cài đặt.
-- Mở một thư mục chứa hình ảnh của truyện cần dịch (Manga/Manhua/Manhwa) bằng cách nhấp vào biểu tượng Thư mục.
-- Nhấp vào nút `Run` và chờ quá trình hoàn thành.
-
-Các định dạng phông chữ như kích thước và màu phông chữ được xác định tự động bởi chương trình, bạn có thể xác định trước các định dạng đó bằng cách thay đổi tùy chọn tương ứng từ "decide by program" sang "use global setting" trong Bảng cấu hình (Config Panel) -> Lettering. (Global setting, cấu hình toàn bộ, là những định dạng được hiển thị ở bảng định dạng phía bên phải màn hình, khi bạn đang không chỉnh sửa bất kỳ văn bản nào trong textblock).
-
-## Chỉnh sửa hình ảnh
-
-### Inpaint Tool
-<img src="./src/imgedit_inpaint.gif">
-<p align = "center">
-Chế độ Chỉnh sửa hình ảnh, Inpainting Tool
-</p>
-
-### rect tool
-<img src="./src/rect_tool.gif">
-<p align = "center">
-Chế độ Chỉnh sửa hình ảnh, Rect Tool
-</p>
-
-Để 'Xóa' những phần đã được inpainted không mong muốn, sử dụng Inpainting tool hoặc Rect tool trong khi đang bấm **chuổt phải**.  
-Kết quả sẽ phụ thuộc vào độ chính xác của thuật toán trích xuất ra text mask (lớp mask chữ) (theo "Phương pháp 1" và "Phương pháp 2" trong GIF). Nếu văn bản & nền phức tạp thì kết quả tách có thể chưa tốt lắm.
-
-## Chỉnh sửa văn bản
-<img src="./src/textedit.gif">
-<p align = "center">
-Chế độ Chỉnh sửa văn bản
-</p>
-
-<img src="./src/multisel_autolayout.gif" div align=center>
-<p align=center>
-Định dạng văn bản hàng loạt & Bố cục tự động
-</p>
-
-<img src="./src/ocrselected.gif" div align=center>
-<p align=center>
-OCR & Chỉ dịch văn bản đã chọn
-</p>
-
-## Shortcuts
-* ```A```/```D``` hoặc ```pageUp```/```pageDown``` : Chuyển trang
-* ```Ctrl+Z```, ```Ctrl+Shift+Z``` : Undo/redo hầu hết các hoạt động. (Lưu ý rằng list hoạt động có thể undo sẽ bị xóa sau khi bạn chuyển trang)
-* ```T``` : Để chuyển sang chế độ chỉnh sửa văn bản (hoặc phím "T" ở thanh công cụ bên dưới).
-* ```W``` : Để kích hoạt chế độ tạo khung văn bản, sau đó bấm chuột phải để thêm khung chữ mới trên canvas. (Xem GIF chỉnh sửa văn bản)
-* ```P``` : Để sang chế độ chỉnh sửa hình ảnh.  
-* Trong Chế độ Chỉnh sửa hình ảnh, sử dụng thanh trượt ở phía dưới bên phải để chỉnh sửa độ trong suốt của hình ảnh gốc.
-* Tắt hoặc bật bất kỳ modules tự động nào qua titlebar->run, chạy chương trình khi mà tất cả modules bị vô hiệu sẽ làm lại việc soạn và render tất cả văn bản tùy theo cài đặt tương ứng.
-* Đặt tham số cho các module tự động trong Bảng cấu hình.  
-* ```Ctrl++```/```Ctrl+-``` (hoặc ```Ctrl+Shift+=```) Để thay đổi kích thước hình ảnh.
-* ```Ctrl+G```/```Ctrl+F``` Để tìm kiếm trên tất cả hoặc trong trang hiện tại.
-* ```0-9``` Để điều chỉnh độ trong suốt của lớp chữ
-* Trong chỉnh sửa văn bản: **bold** - ```Ctrl+B```, <u>underline</u> - ```Ctrl+U```, *italics* - ```Ctrl+I``` 
-* Cài đặt đổ bóng và độ trong suốt chữ ở text style panel -> Effect.  
-  
-<img src="./src/configpanel.png">
-
-## Headless mode (Run without GUI)
-``` python
-python launch.py --headless --exec_dirs "[DIR_1],[DIR_2]..."
-```
-**Lưu ý:** Cấu hình (ngôn ngữ nguồn, ngôn ngữ đích, mô hình InPaint, v.v.) sẽ tải từ config/config.json.
-Nếu kích thước phông chữ được render không đúng, hãy chỉ định DPI thủ công theo cách sau: ```--ldpi```, các giá trị thường dùng là 96 và 72.
-
-
-# Các modules tự động
-Dự án này phụ thuộc rất nhiều vào [manga-image-translator](https://github.com/zyddnys/manga-image-translator), Các dịch vụ trực tuyến và model training không rẻ, nếu được thì donate các dự án nè nha (Xin cám mơn :3):  
-- Ko-fi: <https://ko-fi.com/voilelabs>
-- Patreon: <https://www.patreon.com/voilelabs>
-- 爱发电: <https://afdian.net/@voilelabs>  
-
-[Sugoi translator](https://sugoitranslator.com/) is created by [mingshiba](https://www.patreon.com/mingshiba).
-  
-## Xác định văn bản
-* Hỗ trợ phát hiện văn bản tiếng Anh và tiếng Nhật [comic-text-detector](https://github.com/dmMaze/comic-text-detector)
-* Hỗ trợ Sử dụng phát hiện văn bản [Starriver Cloud (Tuanzi Manga OCR)](https://cloud.stariver.org.cn/). Cần điền username và password, việc đăng nhập tự động sẽ được thực hiện mỗi khi chương trình được khởi chạy.
-   * Hướng dẫn chi tiết, [Tuanzi OCR Instructions (Chinese only)](doc/Tuanzi_OCR_Instructions.md)
-
-## OCR
- * Tất cả các mô hình MIT* đều từ manga-image-translator, hỗ trợ nhận dạng tiếng Anh, Nhật Bản và Hàn Quốc và trích xuất màu văn bản.
- * [manga_ocr](https://github.com/kha-white/manga-ocr) từ [kha-white](https://github.com/kha-white), Nhận dạng văn bản cho tiêng Nhật, tập trung vào manga.
- * Support áp dụng OCR [Starriver Cloud (Tuanzi Manga OCR)](https://cloud.stariver.org.cn/). Cần điền username và password, việc đăng nhập tự động sẽ được thực hiện mỗi khi chương trình được khởi chạy.
-   * Phiên bản hiện tại sử dụng OCR trên mỗi textblock riêng, dẫn đến tốc độ chậm hơn và độ chính xác không được cải thiện tốt. Điều này khum được khuyến khích (thì khum tối ưu mà :<). Nếu cần, hãy sử dụng Tuanzi Detector thay thế.
-   * Khi sài Tuanzi Detector cho việc xác định văn bản, nên đặt OCR thành none_ocr để có thể đọc trực tiếp văn bản, tiết kiệm thời gian và giảm số lượng yêu cầu.
-   * Cụ thể đọc thêm tại đây [Tuanzi OCR Instructions (Chinese only)](doc/Tuanzi_OCR_Instructions.md)
-
-## Inpainting
-  * AOT [manga-image-translator](https://github.com/zyddnys/manga-image-translator).
-  * Tất cả lama* đều là finetuned [LaMa](https://github.com/advimman/lama)
-  * PatchMatch là một thuật toán từ [PyPatchMatch](https://github.com/vacancy/PyPatchMatch), Phần mềm này sử dụng [phiên bản đã được tu luyện (modified version)](https://github.com/dmMaze/PyPatchMatchInpaint) bởi *me*. 
-  
-
-## Dịch thụât
-Trình dịch có sẵn: Google, DeepL, ChatGPT, Sugoi, Caiyun, Baidu. Papago, and Yandex.
- * Google không cung cấp dịch vụ dịch tại Trung Quốc, vui lòng đặt 'URL' tương ứng trong bảng điều khiển thành *.com.
- * [Caiyun](https://dashboard.caiyunapp.com/), [ChatGPT](https://platform.openai.com/playground), [Yandex](https://yandex.com/dev/translate/), [Baidu](http://developers.baidu.com/), èn [DeepL](https://www.deepl.com/docs-api/api-access). Các trình dịch cần có token hoặc api key.
- * DeepL & Sugoi translator (and it's CT2 Translation conversion) thanks to [Snowad14](https://github.com/Snowad14).
- * Sugoi có thể dịch từ Japanese sang English kể cả khi ngoại tuyến (hong có kết nối mạng).
- * [Sakura-13B-Galgame](https://github.com/SakuraLLM/Sakura-13B-Galgame)
-
- Để thêm một trình dịch mới, xem chi tiết hơn ở đây [how_to_add_new_translator](doc/how_to_add_new_translator.md), hiểu đơn giản thì nó như phân lớp của BaseClass và triển khai hai giao diện, sau đó bạn có thể sử dụng trong ứng dụng, rấc welcome đóng góp cho dự án nhe.  
-
-
-## FAQ & Misc
-* Nếu máy tính của bạn có GPU NVIDIA hoặc Apple Silicon, chương trình sẽ có thể kích hoạt việc tăng tốc phần cứng. 
-* Thêm hỗ trợ cho [saladict](https://saladict.crimx.com) (*All-in-one professional pop-up dictionary and page translator*) trong mini menu về lựa chọn text. [Installation guide](doc/saladict.md)
-* Tăng tốc hiệu suất nếu bạn có [NVIDIA's CUDA](https://pytorch.org/docs/stable/notes/cuda.html) hoặc [AMD's ROCm](https://pytorch.org/docs/stable/notes/hip.html) thiết bị, hầu hết các module sử dụng [PyTorch](https://pytorch.org/get-started/locally/).
-* Fonts được lấy từ fonts có trong máy.
-* Gửi lời cảm ơn tới [bropines](https://github.com/bropines) cho việc Nga hóa.
-* Thêm Export to photoshop JSX bởi [bropines](https://github.com/bropines).
-  Để đọc các hướng dẫn, cải thiện code hoặc nà tò mò vọc quanh quanh để xem cách hoạt động, zô `scripts/export to photoshop` -> `install_manual.md`.
+- Dự án được phát hành theo giấy phép [GNU General Public License v3.0](../LICENSE).
+- Công cụ được tạo ra nhằm mục đích học tập, nghiên cứu công nghệ AI và hỗ trợ cộng đồng dịch giả. Vui lòng tôn trọng bản quyền của các tác giả truyện tranh gốc.
