@@ -103,9 +103,7 @@ class LLM_API_Translator(BaseTranslator):
             "type": "selector",
             "options": [
                 "gemini-3.8-flash",
-                "gemini-3.7-flash",
                 "gemini-3.6-flash",
-                "gemini-3.5-flash",
                 "gemini-3.5-flash-lite",
             ],
             "value": "gemini-3.8-flash",
@@ -239,9 +237,7 @@ class LLM_API_Translator(BaseTranslator):
         self._model_last_request_time: Dict[str, float] = {}
         self.MODEL_RPM_LIMITS: Dict[str, int] = {
             "gemini-3.8-flash": 5,
-            "gemini-3.7-flash": 5,
             "gemini-3.6-flash": 5,
-            "gemini-3.5-flash": 5,
             "gemini-3.5-flash-lite": 15,
         }
         self.client = None
@@ -265,14 +261,28 @@ class LLM_API_Translator(BaseTranslator):
         return m
 
     def _initialize_client(self, api_key_to_use: str) -> bool:
-        if not api_key_to_use or not api_key_to_use.startswith("AIza"):
+        def _is_valid_key(k: str) -> bool:
+            return bool(k and isinstance(k, str) and k.strip() and not k.startswith("YOUR_") and not k.startswith("#"))
+
+        if not _is_valid_key(api_key_to_use):
             try:
-                from utils.config import ProgramConfig
-                cfg_key = ProgramConfig().get_param("translator", "apikey", "")
-                if cfg_key and cfg_key.startswith("AIza"):
-                    api_key_to_use = cfg_key
+                sec_path = Path("config/secrets.json")
+                if sec_path.exists():
+                    with open(sec_path, "r", encoding="utf-8") as f:
+                        s_data = json.load(f)
+                    sec_key = (s_data.get("gemini_api_key") or s_data.get("api_key") or "").strip()
+                    if _is_valid_key(sec_key):
+                        api_key_to_use = sec_key
             except Exception:
                 pass
+            if not _is_valid_key(api_key_to_use):
+                try:
+                    from utils.config import ProgramConfig
+                    cfg_key = ProgramConfig().get_param("translator", "apikey", "")
+                    if _is_valid_key(cfg_key):
+                        api_key_to_use = cfg_key
+                except Exception:
+                    pass
 
         endpoint = self.endpoint
         provider = self.provider
@@ -289,7 +299,7 @@ class LLM_API_Translator(BaseTranslator):
                         endpoint = "http://127.0.0.1:8080/v1"
                 else:
                     endpoint = "http://127.0.0.1:8080/v1"
-                if is_proxy_alive() and api_key_to_use and api_key_to_use.startswith("AIza"):
+                if is_proxy_alive() and _is_valid_key(api_key_to_use):
                     sync_proxy_api_key(api_key_to_use)
             except Exception as e:
                 endpoint = "https://generativelanguage.googleapis.com/v1beta/openai"
@@ -367,14 +377,27 @@ class LLM_API_Translator(BaseTranslator):
 
     @property
     def apikey(self) -> str:
+        def _is_valid_key(k: str) -> bool:
+            return bool(k and isinstance(k, str) and k.strip() and not k.startswith("YOUR_") and not k.startswith("#"))
+
         key = self.get_param_value("apikey")
-        if not key or not key.startswith("AIza"):
+        if not _is_valid_key(key):
+            try:
+                sec_path = Path("config/secrets.json")
+                if sec_path.exists():
+                    with open(sec_path, "r", encoding="utf-8") as f:
+                        s_data = json.load(f)
+                    sec_key = (s_data.get("gemini_api_key") or s_data.get("api_key") or "").strip()
+                    if _is_valid_key(sec_key):
+                        return sec_key
+            except Exception:
+                pass
             try:
                 from utils.config import pcfg
                 cfg_key = pcfg.module.translator_params.get("LLM_API_Translator", {}).get("apikey", "")
                 if isinstance(cfg_key, dict):
                     cfg_key = cfg_key.get("value", "")
-                if cfg_key and cfg_key.startswith("AIza"):
+                if _is_valid_key(cfg_key):
                     return cfg_key
             except Exception:
                 pass
@@ -384,7 +407,7 @@ class LLM_API_Translator(BaseTranslator):
                     with open(cfg_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
                     cfg_key = data.get("module", {}).get("translator_params", {}).get("LLM_API_Translator", {}).get("apikey", "")
-                    if cfg_key and cfg_key.startswith("AIza"):
+                    if _is_valid_key(cfg_key):
                         return cfg_key
             except Exception:
                 pass
@@ -677,7 +700,7 @@ class LLM_API_Translator(BaseTranslator):
             model_name = model_name.split(": ", 1)[1]
 
         # Map model aliases to official Google Gemini API model IDs
-        # Note: gemini-3.7-flash, gemini-3.6-flash, gemini-3.5-flash-lite are REAL model names on Google API
+        # Note: gemini-3.8-flash, gemini-3.6-flash, gemini-3.5-flash-lite are REAL model names on Google API
         if self.provider in ["Gemini Proxy", "Google"]:
             target_model = model_name  # Use as-is, these are real Google model names
         else:
@@ -733,15 +756,11 @@ class LLM_API_Translator(BaseTranslator):
 
         # Fallback Chain in exact Free Tier priority order:
         # 1. gemini-3.8-flash (Top quality / 5 RPM / 20 RPD)
-        # 2. gemini-3.7-flash (5 RPM / 20 RPD)
-        # 3. gemini-3.6-flash (5 RPM / 20 RPD)
-        # 4. gemini-3.5-flash (5 RPM / 20 RPD)
-        # 5. gemini-3.5-flash-lite (High-RPD fallback / 15 RPM / 500 RPD)
+        # 2. gemini-3.6-flash (5 RPM / 20 RPD)
+        # 3. gemini-3.5-flash-lite (High-RPD fallback / 15 RPM / 500 RPD)
         FALLBACK_CHAIN = [
             "gemini-3.8-flash",
-            "gemini-3.7-flash",
             "gemini-3.6-flash",
-            "gemini-3.5-flash",
             "gemini-3.5-flash-lite",
         ]
 

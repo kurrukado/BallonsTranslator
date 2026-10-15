@@ -231,7 +231,9 @@ class Canvas(QGraphicsScene):
         self.rubber_band_origin = None
 
         self.draw_undo_stack = QUndoStack(self)
+        self.draw_undo_stack.setUndoLimit(30)  # ponytail: cap RAM; raise if users complain
         self.text_undo_stack = QUndoStack(self)
+        self.text_undo_stack.setUndoLimit(50)
         self.saved_drawundo_step = 0
         self.saved_textundo_step = 0
 
@@ -429,6 +431,11 @@ class Canvas(QGraphicsScene):
         
         if inpainted_as_base:
             self.base_pixmap = ndarray2pixmap(self.imgtrans_proj.inpainted_array)
+        elif self.imgtrans_proj.img_array is not None:
+            self.base_pixmap = ndarray2pixmap(self.imgtrans_proj.img_array)
+
+        if self.base_pixmap is None:
+            return
 
         pixmap = self.base_pixmap.copy()
         painter = QPainter(pixmap)

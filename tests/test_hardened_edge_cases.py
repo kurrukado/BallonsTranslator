@@ -259,11 +259,14 @@ class TestHardenedEdgeCases(unittest.TestCase):
         - Network timeouts retry with backoff and succeed on backup model.
         - Malformed or truncated JSON from smaller models is repaired or caught.
         """
+        from utils.quota_tracker import QUOTA_TRACKER
+        QUOTA_TRACKER.exhausted_today.clear()
+
         proxy = TranslationProxy()
         proxy.start_session([0])
         proxy.mark_page_completed(0, [{"id": 1, "text": "Rate Limit Test"}])
 
-        translator = LLM_API_Translator("English", "Tiếng Việt")
+        translator = LLM_API_Translator("English", "Tiếng Việt", model="gemini-3.5-flash-lite")
         translator._initialize_client = MagicMock(return_value=True)
         translator.client = MagicMock()
 
@@ -281,7 +284,7 @@ class TestHardenedEdgeCases(unittest.TestCase):
         translator.client.chat.completions.create.side_effect = mock_chat_create
         res = translator.translate_chapter_batch(proxy)
 
-        # Verify gemini-3.5-flash-lite was called ONLY ONCE before fast-fallback to gemini-3.5-flash
+        # Verify gemini-3.5-flash-lite was called ONLY ONCE before fast-fallback to gemini-3.8-flash
         lite_calls = [m for m in call_sequence if m == "gemini-3.5-flash-lite"]
         self.assertEqual(len(lite_calls), 1, f"Expected 1 call before fast fallback, got {len(lite_calls)}")
         self.assertEqual(res[0][1]["translation"], "Thành công qua fallback")

@@ -24,7 +24,12 @@ test_dir
 tmp
 logs
 ballontrans_pylibs_win
+# User configuration & secrets - NEVER push to GitHub
 config/config.json
+config/secrets.json
+config/user_*.json
+config/*.secret*
+config/textstyles/
 localtmp*
 
 .vscode
@@ -76,6 +81,11 @@ scratch/
 api-key.txt
 */api-key.txt
 gemini-proxy/api-key.txt
+*.key
+*.token
+.env
+.env.*
+*secret*
 
 # Markdown exclusions (preserve only READMEs)
 *.md

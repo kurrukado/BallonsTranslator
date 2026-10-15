@@ -16,13 +16,37 @@ def is_proxy_alive(url="http://127.0.0.1:8080/api/status", timeout=0.2):
         return False
 
 def get_saved_api_key():
-    # 1. Try reading from api-key.txt in project or system
+    import json
     project_root = Path(__file__).resolve().parent.parent
+
+    # 1. Primary: Try reading from config/secrets.json
+    try:
+        secrets_path = project_root / "config" / "secrets.json"
+        if secrets_path.exists():
+            with open(secrets_path, "r", encoding="utf-8") as f:
+                s_data = json.load(f)
+            key = (s_data.get("gemini_api_key") or s_data.get("api_key") or "").strip()
+            if key and not key.startswith("#") and "YOUR_GEMINI" not in key:
+                return key
+    except Exception:
+        pass
+
+    # 2. Secondary: Try reading from config/config.json
+    try:
+        cfg_path = project_root / "config" / "config.json"
+        if cfg_path.exists():
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            key = data.get("module", {}).get("translator_params", {}).get("LLM_API_Translator", {}).get("apikey", "").strip()
+            if key and not key.startswith("#") and "YOUR_GEMINI" not in key:
+                return key
+    except Exception:
+        pass
+
+    # 3. Fallback: Try reading legacy api-key.txt
     possible_txt_paths = [
         project_root / "gemini-proxy" / "api-key.txt",
         Path("gemini-proxy/api-key.txt"),
-        Path("E:/gemini-proxy/api-key.txt"),
-        Path("d:/gemini-proxy/api-key.txt"),
     ]
     for txt_path in possible_txt_paths:
         if txt_path.exists():
@@ -32,19 +56,6 @@ def get_saved_api_key():
                     return key
             except Exception:
                 pass
-
-    # 2. Try reading from config.json
-    try:
-        import json
-        cfg_path = Path(__file__).resolve().parent.parent / "config" / "config.json"
-        if cfg_path.exists():
-            with open(cfg_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            key = data.get("module", {}).get("translator_params", {}).get("LLM_API_Translator", {}).get("apikey", "").strip()
-            if key:
-                return key
-    except Exception:
-        pass
 
     # 3. Try env var
     return os.environ.get("GEMINI_API_KEY", "").strip()

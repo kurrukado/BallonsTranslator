@@ -84,8 +84,8 @@ def log_user_feedback_async(imgtrans_proj: Any, page_name: str, canvas: Any = No
                 ptr = drawed_qimg.bits()
                 ptr.setsize(h * w * 4)
                 arr = np.frombuffer(ptr, np.uint8).reshape((h, w, 4))
-                drawing_mask = arr[:, :, 3]  # Alpha channel as mask
-                orig_img = imgtrans_proj.orig_img
+                drawing_mask = arr[:, :, 3].copy()  # Alpha channel as mask
+                orig_img = np.copy(imgtrans_proj.img_array) if getattr(imgtrans_proj, "img_array", None) is not None else None
             except Exception:
                 pass
 

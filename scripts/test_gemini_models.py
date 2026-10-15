@@ -17,7 +17,7 @@ from utils.gemini_proxy_launcher import ensure_gemini_proxy_running
 ensure_gemini_proxy_running()
 
 models_to_test = [
-    'gemini-3.7-flash',
+    'gemini-3.8-flash',
     'gemini-3.6-flash',
     'gemini-3.5-flash-lite',
 ]
@@ -29,7 +29,7 @@ test_inputs = [
 ]
 
 print("=" * 60)
-print("  TESTING 3 STREAMLINED GEMINI MODELS (3.7, 3.6, 3.5-Lite)")
+print("  TESTING 3 STREAMLINED GEMINI MODELS (3.8, 3.6, 3.5-Lite)")
 print("=" * 60)
 
 LLM_Cls = TRANSLATORS.module_dict['LLM_API_Translator']

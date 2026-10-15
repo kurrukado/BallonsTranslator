@@ -255,8 +255,8 @@ def run_gemini_translation_benchmark():
     
     models = [
         {
-            "name": "gemini-3.7-flash",
-            "generation": "Gemini 3.7 Flagship (Aug 2026)",
+            "name": "gemini-3.8-flash",
+            "generation": "Gemini 3.8 Flagship (2026)",
             "est_latency_per_page": 0.85,
             "queue_delay": 4.0,
             "rpm": 15,

@@ -59,7 +59,7 @@ class ImgSaveThread(ThreadBase):
             if isinstance(img, (QImage, QPixmap)):
                 img_array = pixmap2ndarray(img, keep_alpha=keep_alpha)
             elif isinstance(img, np.ndarray):
-                img_array = np.ascontiguousarray(img)
+                img_array = img.copy()
             else:
                 img_array = img
         except Exception as e:

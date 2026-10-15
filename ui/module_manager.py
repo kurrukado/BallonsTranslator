@@ -739,6 +739,7 @@ class ImgtransThread(QThread):
             if not self.stop_requested and (self.active_job_id == current_job_id):
                 LOGGER.info(f"🎉 [JOB {current_job_id[:8]}] COMPLETED: Pipeline finished successfully.")
                 self.pipeline_finished.emit()
+                soft_empty_cache()
         else:
             self.pipeline_stopped.emit()
 
@@ -1150,7 +1151,6 @@ class ModuleManager(QObject):
         if not self.imgtrans_thread.isRunning():
             if self.inpaint_thread.inpainting:
                 self.run_canvas_inpaint = False
-                self.inpaint_thread.terminate()
 
     def on_inpainter_checker_changed(self, is_checked: bool):
         cfg_module.check_need_inpaint = is_checked

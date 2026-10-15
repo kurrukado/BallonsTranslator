@@ -24,12 +24,12 @@ def test_quota_tracker_unit():
     candidates = QUOTA_TRACKER.get_candidate_models(preferred_model="gemini-3.8-flash")
     print(f"Candidate models for standard batch: {candidates}")
     assert candidates[0] == "gemini-3.8-flash", f"Expected gemini-3.8-flash first, got {candidates[0]}"
-    assert "gemini-3.7-flash" in candidates, "Expected gemini-3.7-flash in candidates"
     assert "gemini-3.6-flash" in candidates, "Expected gemini-3.6-flash in candidates"
-    assert "gemini-3.5-flash" in candidates, "Expected gemini-3.5-flash in candidates"
     assert "gemini-3.5-flash-lite" in candidates, "Expected gemini-3.5-flash-lite in candidates"
     
     # Verify blacklisted models are not included
+    assert "gemini-3.7-flash" not in candidates, "gemini-3.7-flash must be excluded"
+    assert "gemini-3.5-flash" not in candidates, "gemini-3.5-flash must be excluded"
     assert "gemini-2.5-pro" not in candidates, "gemini-2.5-pro must be excluded"
     assert "gemini-3.1-flash-lite" not in candidates, "gemini-3.1-flash-lite must be excluded"
     assert "gemini-2.5-flash-lite" not in candidates, "gemini-2.5-flash-lite must be excluded"

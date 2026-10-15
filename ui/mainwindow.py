@@ -764,18 +764,21 @@ class MainWindow(mainwindow_cls):
     def pageListCurrentItemChanged(self):
         item = self.pageList.currentItem()
         self.page_changing = True
-        if item is not None:
-            if self.save_on_page_changed and self.imgtrans_proj.img_valid and not self.opening_dir:
-                self.saveCurrentPage(update_scene_text=True, save_proj=True, restore_interface=False, save_rst_only=False)
-            self.imgtrans_proj.set_current_img(item.text())
-            self.canvas.clear_undostack(update_saved_step=True)
-            self.canvas.updateCanvas()
-            self.st_manager.updateSceneTextitems()
-            self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
-            self.module_manager.handle_page_changed()
-            self.drawingPanel.handle_page_changed()
-            
-        self.page_changing = False
+        try:
+            if item is not None:
+                if self.save_on_page_changed and self.canvas.projstate_unsaved and self.imgtrans_proj.img_valid and not self.opening_dir:
+                    self.saveCurrentPage(update_scene_text=True, save_proj=True, restore_interface=False, save_rst_only=False)
+                self.imgtrans_proj.set_current_img(item.text())
+                self.canvas.clear_undostack(update_saved_step=True)
+                self.canvas.updateCanvas()
+                self.st_manager.updateSceneTextitems()
+                self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
+                self.module_manager.handle_page_changed()
+                self.drawingPanel.handle_page_changed()
+        except Exception as e:
+            LOGGER.error(f"Error changing page: {e}")
+        finally:
+            self.page_changing = False
 
     def setupShortcuts(self):
         self.titleBar.nextpage_trigger.connect(self.shortcutNext) 

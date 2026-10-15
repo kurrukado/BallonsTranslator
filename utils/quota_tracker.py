@@ -31,23 +31,7 @@ DEFAULT_QUOTA_PROFILES = {
         "context_window": 1048576,
         "daily_budget": 20,
     },
-    "gemini-3.7-flash": {
-        "rpm": 5,
-        "tpm": 250000,
-        "rpd": 20,
-        "tier": "primary",
-        "context_window": 1048576,
-        "daily_budget": 20,
-    },
     "gemini-3.6-flash": {
-        "rpm": 5,
-        "tpm": 250000,
-        "rpd": 20,
-        "tier": "primary",
-        "context_window": 1048576,
-        "daily_budget": 20,
-    },
-    "gemini-3.5-flash": {
         "rpm": 5,
         "tpm": 250000,
         "rpd": 20,
@@ -68,6 +52,10 @@ DEFAULT_QUOTA_PROFILES = {
 
 # Explicitly Blacklisted / Removed models
 BLACKLISTED_MODELS = {
+    "gemini-3.7-flash",
+    "gemini-3.5-flash",
+    "gemini-3-flash-preview",
+    "gemini-3.1-pro-preview",
     "gemini-2.5-pro",
     "gemini-3.1-pro",
     "gemini-2-flash",
@@ -264,19 +252,15 @@ class QuotaTracker:
         """
         Constructs an ordered list of viable models following the User-Specified Priority:
         1. gemini-3.8-flash (Primary / Top Quality)
-        2. gemini-3.7-flash
-        3. gemini-3.6-flash
-        4. gemini-3.5-flash
-        5. gemini-3.5-flash-lite (High-RPD fallback)
+        2. gemini-3.6-flash
+        3. gemini-3.5-flash-lite (High-RPD fallback)
         Excludes all removed/blacklisted models.
         """
         with self._mutex:
             self._check_and_reset_daily()
             ordered_priority = [
                 "gemini-3.8-flash",
-                "gemini-3.7-flash",
                 "gemini-3.6-flash",
-                "gemini-3.5-flash",
                 "gemini-3.5-flash-lite",
             ]
             candidates = []

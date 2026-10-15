@@ -118,13 +118,13 @@ print("      ✓ MangaOCR đã sẵn sàng trên thiết bị CUDA.")
 for idx, (b, blk) in enumerate(zip(manga_blocks, text_blocks)):
     print(f"      [MangaOCR #{idx + 1}] -> \"{blk.get_text().replace(chr(10), ' ')}\"")
 
-# 4. Context-Aware Japanese -> Vietnamese Translation via Gemini 3.7 Flash
-print("\n[Step 4/5] Dịch thuật ngữ cảnh Nhật -> Việt qua Gemini 3.7 Flash...")
+# 4. Context-Aware Japanese -> Vietnamese Translation via Gemini 3.8 Flash
+print("\n[Step 4/5] Dịch thuật ngữ cảnh Nhật -> Việt qua Gemini 3.8 Flash...")
 TranslatorClass = TRANSLATORS.module_dict["LLM_API_Translator"]
 translator = TranslatorClass(
     lang_source='日本語',
     lang_target='Tiếng Việt',
-    model='gemini-3.7-flash',
+    model='gemini-3.8-flash',
     raise_unsupported_lang=False
 )
 translator.story_genre = "School Mystery / Thriller"

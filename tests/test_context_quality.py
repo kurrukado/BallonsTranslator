@@ -45,7 +45,7 @@ def run_test_suite():
     translator = LLM_API_Translator(
         lang_source='日本語',
         lang_target='Tiếng Việt',
-        model='gemini-3.7-flash',
+        model='gemini-3.8-flash',
         raise_unsupported_lang=False
     )
 
@@ -174,7 +174,7 @@ def run_test_suite():
 
     # --- Scenario 8: Korean Honorifics ---
     print("\n[Scenario 8] Korean Honorifics Localization")
-    trans_kr = LLM_API_Translator(lang_source='한국어', lang_target='Tiếng Việt', model='gemini-3.7-flash', raise_unsupported_lang=False)
+    trans_kr = LLM_API_Translator(lang_source='한국어', lang_target='Tiếng Việt', model='gemini-3.8-flash', raise_unsupported_lang=False)
     items_s8 = [
         DialogueItem(id=1, source="선배, 이번 주말에 시간 있으세요?", position="Top-Right"),
         DialogueItem(id=2, source="응, 왜 그래?", position="Bottom-Left"),
@@ -187,7 +187,7 @@ def run_test_suite():
 
     # --- Scenario 9: Chinese Cultivation Pronouns ---
     print("\n[Scenario 9] Chinese Cultivation / Martial Arts Pronouns")
-    trans_cn = LLM_API_Translator(lang_source='简体中文', lang_target='Tiếng Việt', model='gemini-3.7-flash', raise_unsupported_lang=False)
+    trans_cn = LLM_API_Translator(lang_source='简体中文', lang_target='Tiếng Việt', model='gemini-3.8-flash', raise_unsupported_lang=False)
     items_s9 = [
         DialogueItem(id=1, source="本座今日便要替天行道，妖孽休得猖狂！", position="Top-Right"),
     ]

@@ -147,10 +147,9 @@ class LLM_OCR(OCRBase):
         "OAI: gpt-4-vision-preview",
         "OAI: gpt-4o",
         "OAI: gpt-4",
-        "GGL: gemini-3.1-pro-preview",
+        "GGL: gemini-3.8-flash",
+        "GGL: gemini-3.6-flash",
         "GGL: gemini-3.5-flash-lite",
-        "GGL: gemini-3.5-flash",
-        "GGL: gemini-3-flash-preview",
     ]
 
     params = {
@@ -233,9 +232,9 @@ class LLM_OCR(OCRBase):
         self.current_key_index = 0
         self._model_last_request_time: Dict[str, float] = {}
         self.MODEL_RPM_LIMITS: Dict[str, int] = {
-            "gemini-3.5-flash-lite": 10,
+            "gemini-3.8-flash": 5,
             "gemini-3.6-flash": 5,
-            "gemini-3.7-flash": 5,
+            "gemini-3.5-flash-lite": 10,
         }
 
     def _initialize_client(self, api_key_to_use: str):
@@ -498,7 +497,7 @@ class LLM_OCR(OCRBase):
 
             candidates = [target_model]
             if self.provider in ["Google", "Gemini Proxy"]:
-                for m in ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash"]:
+                for m in ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]:
                     if m not in candidates:
                         candidates.append(m)
 
@@ -605,7 +604,7 @@ class LLM_OCR(OCRBase):
 
         candidates = [model_name]
         if self.provider in ["Google", "Gemini Proxy"]:
-            for m in ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash"]:
+            for m in ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"]:
                 if m not in candidates:
                     candidates.append(m)
 

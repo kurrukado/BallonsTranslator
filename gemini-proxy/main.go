@@ -344,9 +344,7 @@ func modelsHandler(w http.ResponseWriter, r *http.Request) {
 		"object": "list",
 			// Gemini 3.x family (free tier)
 			{"id": "gemini-3.8-flash", "object": "model", "owned_by": "google"},
-			{"id": "gemini-3.7-flash", "object": "model", "owned_by": "google"},
 			{"id": "gemini-3.6-flash", "object": "model", "owned_by": "google"},
-			{"id": "gemini-3.5-flash", "object": "model", "owned_by": "google"},
 			{"id": "gemini-3.5-flash-lite", "object": "model", "owned_by": "google"},
 			// Legacy models
 			{"id": "gemini-2.0-flash", "object": "model", "owned_by": "google"},
