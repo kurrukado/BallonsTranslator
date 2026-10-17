@@ -268,24 +268,27 @@ class InpainterBase(BaseModule):
             mask_bin = (mask_3d > 0)
             result_rgb = np.where(mask_bin, result_rgb, img_rgb)
 
-            # Measure actual Unmasked Pixel MAE dynamically
-            unmasked_mask = (~mask_bin[:, :, 0]) if mask_bin.ndim == 3 else (~mask_bin)
-            if np.any(unmasked_mask):
-                unmasked_mae = float(np.mean(np.abs(result_rgb[unmasked_mask].astype(np.float32) - img_rgb[unmasked_mask].astype(np.float32))))
+            # ponytail: MAE / texture-std probing costs ~100ms + ~100MB churn per page and is
+            # only diagnostic (MAE is 0.000000 by construction from the clamp above; the same
+            # metrics are re-measured independently by scripts/verify_ocr_inpaint_accuracy.py).
+            # Only pay for it when running with --debug.
+            if self.debug_mode:
+                unmasked_mask = ~mask_bin[:, :, 0]
+                if np.any(unmasked_mask):
+                    unmasked_mae = float(np.mean(np.abs(result_rgb[unmasked_mask].astype(np.float32) - img_rgb[unmasked_mask].astype(np.float32))))
+                else:
+                    unmasked_mae = 0.0
+                mask_bool = (mask > 0)
+                if np.any(mask_bool):
+                    inpainted_std = float(np.std(result_rgb[mask_bool]))
+                    surround_elem = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))
+                    surround_only = (cv2.dilate(mask.astype(np.uint8), surround_elem) > 0) & (~mask_bool)
+                    surround_std = float(np.std(img_rgb[surround_only])) if np.any(surround_only) else inpainted_std
+                    LOGGER.info(f"[{self.name}] Inpainting Complete | Unmasked MAE: {unmasked_mae:.6f} | Texture Std Dev (Inpainted: {inpainted_std:.2f}, Background: {surround_std:.2f})")
+                else:
+                    LOGGER.info(f"[{self.name}] Inpainting Complete | Unmasked MAE: {unmasked_mae:.6f} | No active mask pixels.")
             else:
-                unmasked_mae = 0.0
-            
-            # Measure screentone texture standard deviation
-            mask_bool = (mask > 0)
-            if np.any(mask_bool):
-                inpainted_std = float(np.std(result_rgb[mask_bool]))
-                surround_elem = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))
-                dilated_surround = cv2.dilate(mask.astype(np.uint8), surround_elem) > 0
-                surround_only = dilated_surround & (~mask_bool)
-                surround_std = float(np.std(img_rgb[surround_only])) if np.any(surround_only) else inpainted_std
-                LOGGER.info(f"[{self.name}] Inpainting Complete | Unmasked MAE: {unmasked_mae:.6f} | Texture Std Dev (Inpainted: {inpainted_std:.2f}, Background: {surround_std:.2f})")
-            else:
-                LOGGER.info(f"[{self.name}] Inpainting Complete | Unmasked MAE: {unmasked_mae:.6f} | No active mask pixels.")
+                LOGGER.info(f"[{self.name}] Inpainting Complete | Unmasked MAE: 0.000000 (mask clamp invariant)")
 
             # Recombine with alpha if original was RGBA
             if original_alpha is not None:

@@ -3,7 +3,13 @@ import cv2
 import numpy as np
 from typing import List, Tuple, Dict, Any, Optional
 
-STANDARD_PUNCTUATION = set(" .,!?'\"-;:()[]/…-—~_?!")
+STANDARD_PUNCTUATION = set(
+    " .,!?'\"-;:()[]/…-—~_?!"
+    # Fullwidth / CJK punctuation: legitimate in Japanese & Chinese text but not
+    # alphanumeric, so without these the validator flags normal manga dialogue as
+    # "high_garbage_ratio" and pointlessly re-routes it to the LLM.
+    "。、，．！？：；「」『』（）［］｛｝【】〈〉《》〔〕〜～・ー…‥“”‘’·　"
+)
 
 def generate_multiview_crops(crop: np.ndarray) -> List[Tuple[str, np.ndarray]]:
     """

@@ -5,6 +5,7 @@ import numpy as np
 from typing import List, Optional
 
 from .base import OCRBase, register_OCR, TextBlock, LOGGER
+from utils.ocr_validator import generate_multiview_crops, score_ocr_quality, is_high_stylization_crop
 
 try:
     import winrt.windows.media.ocr as winrt_ocr
@@ -73,15 +74,13 @@ class WindowsOCR(OCRBase):
             return ""
 
         if crop.ndim == 2:
-            crop_rgb = cv2.cvtColor(crop, cv2.COLOR_GRAY2RGB)
+            crop_bgr = cv2.cvtColor(crop, cv2.COLOR_GRAY2BGR)
         elif crop.shape[-1] == 4:
-            crop_rgb = cv2.cvtColor(crop, cv2.COLOR_RGBA2RGB)
-        elif crop.shape[-1] == 3:
-            crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+            crop_bgr = cv2.cvtColor(crop, cv2.COLOR_RGBA2BGR)
         else:
-            crop_rgb = crop
+            crop_bgr = crop
 
-        success, buf = cv2.imencode(".png", cv2.cvtColor(crop_rgb, cv2.COLOR_RGB2BGR))
+        success, buf = cv2.imencode(".png", crop_bgr)
         if not success:
             return ""
 
@@ -185,7 +184,6 @@ class WindowsOCR(OCRBase):
                     blk.text = [""]
                     continue
 
-                from utils.ocr_validator import generate_multiview_crops, score_ocr_quality, is_high_stylization_crop
                 is_stylized, reason_stylized = is_high_stylization_crop(crop)
                 if is_stylized and self.fallback_llm:
                     fallback_blks.append(blk)

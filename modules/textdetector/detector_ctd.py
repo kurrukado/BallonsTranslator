@@ -8,6 +8,18 @@ from utils.textblock_mask import _is_gradient_bg
 CTD_ONNX_PATH = 'data/models/comictextdetector.pt.onnx'
 CTD_TORCH_PATH = 'data/models/comictextdetector.pt'
 
+
+def _block_dilate_kernel(base_ksize: int, is_sfx_or_stroke: bool) -> int:
+    """Glyph-hugging dilation kernel for one text block (odd, small, capped at 9).
+
+    Derived from the user's "mask dilate size" param so the slider still works, but
+    hard-capped: an over-dilated mask fuses text lines into a solid slab, leaving the
+    inpainter (LaMa) no background to sample from, which produces flat "white arena"
+    fills on art/screentone backgrounds.
+    """
+    k = max(5, min(9, 2 * int(base_ksize // 2) + 1))
+    return max(k, 7) if is_sfx_or_stroke else k
+
 def load_ctd_model(model_path, device, detect_size=1024, conf_thresh=0.20, text_thresh=0.25, link_thresh=0.20, low_text=0.15, min_area=16):
     from .ctd import CTDModel
     model = CTDModel(model_path, detect_size=detect_size, device=device, conf_thresh=conf_thresh, text_thresh=text_thresh, link_thresh=link_thresh, low_text=low_text, min_area=min_area)
@@ -148,16 +160,12 @@ class ComicTextDetector(TextDetectorBase):
                 or max(bw, bh) > 150
             )
 
-            # Dynamic Morphological Dilation Formula:
-            # kernel_size = max(7, 2 * floor((box_height * 0.12) / 2) + 1)
-            base_dynamic_k = max(7, 2 * int((float(bh) * 0.12) // 2) + 1)
-            if is_sfx_or_stroke:
-                font_h = max(float(fsize), float(bh) / max(1, len(getattr(blk, 'lines', [1]))))
-                blk_ksize = max(base_dynamic_k, max(8, int(font_h * 0.25)))
-                iterations = 2
-            else:
-                blk_ksize = max(base_dynamic_k, max(3, base_ksize))
-                iterations = 2
+            # ponytail: dilation must stay glyph-hugging. The previous bh*0.12 kernel
+            # (up to ~17px, applied twice) fused text lines into solid slabs; LaMa then
+            # had no background left to sample and filled whole blocks with flat colour.
+            # Kernel is now small, single-iteration, and capped (see _block_dilate_kernel).
+            blk_ksize = _block_dilate_kernel(base_ksize, is_sfx_or_stroke)
+            iterations = 1
 
             # Expand sub-window for local dilation to prevent border clipping
             pad = blk_ksize * iterations + 12
